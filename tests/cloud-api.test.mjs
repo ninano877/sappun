@@ -67,7 +67,7 @@ assert.equal((await request('/api/shares',{token:friend})).status,401);
 assert.equal((await request('/api/shared/'+id,{method:'PUT',token:friend,body:{name:'edit'}})).status,405);
 const changed = structuredClone(book);changed.trips[0].title='바뀐 이름';
 await request('/api/book',{method:'PUT',token:owner,body:{book:changed,revision:2}});
-assert.equal((await request('/api/shared/'+id,{token:friend})).data.trip.title,'공유 테스트','share remains an explicit snapshot');
+assert.equal((await request('/api/shared/'+id,{token:friend})).data.trip.title,'바뀐 이름','shared trip follows the latest saved itinerary');
 assert.equal((await request('/api/shares/'+id,{method:'DELETE',token:owner})).status,200);
 assert.equal((await request('/api/shared/'+id,{token:friend})).status,401,'revocation invalidates existing sessions');
 assert.equal((await request('/api/shared/'+id+'/unlock',{method:'POST',body:{password:'test-share-pass'}})).status,410);

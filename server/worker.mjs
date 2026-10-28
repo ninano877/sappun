@@ -43,7 +43,7 @@ export function validateBook(book) {
 export function shareSnapshot(trip, choices = {}) {
   const stops = trip.data.days.flat();
   const allowedTabs=['itinerary','list','settlement','preparation','materials'];
-  const options={tabs:Array.isArray(choices.tabs)?[...new Set(choices.tabs.filter(key=>allowedTabs.includes(key)))]:['itinerary','list'],notes:choices.notes===true,costs:choices.costs===true,members:choices.members===true,map:choices.map!==false};
+  const options={tabs:Array.isArray(choices.tabs)?[...new Set(choices.tabs.filter(key=>allowedTabs.includes(key)))]:['itinerary','list'],notes:choices.notes===true,costs:choices.costs===true,members:choices.members===true,map:choices.map!==false,files:choices.files!==false};
   if(!options.tabs.length)fail(400,'공유할 탭을 하나 이상 선택해 주세요.');
   if(options.tabs.includes('settlement'))options.costs=true;
   const pick=(value,keys)=>Object.fromEntries(keys.filter(key=>value?.[key]!==undefined).map(key=>[key,value[key]]));
@@ -149,6 +149,30 @@ async function liveShare(env, id, now) {
   if (!share || share.revoked || share.expires_at <= now) fail(410, '공유가 종료되었거나 만료되었어요.');
   return share;
 }
+async function currentSharedSnapshot(share,env) {
+  const stored=JSON.parse(share.payload);
+  if(!stored.planner?.id)return stored;
+  const book=await env.DB.prepare('SELECT payload,revision FROM books WHERE id=1').first();
+  const trip=book&&JSON.parse(book.payload).trips.find(item=>item.id===stored.planner.id);
+  if(!trip)fail(410,'이 여행의 공유가 종료되었어요.');
+  const fresh=shareSnapshot(trip,stored.options);
+  fresh.updatedAt=String(book.revision)+':'+String(stored.updatedAt);
+  fresh._mapCipher=stored._mapCipher;
+  return fresh;
+}
+async function sharedSession(request,env,id,now) {
+  const hash=await bearer(request);
+  const session=await env.DB.prepare('SELECT * FROM share_sessions WHERE token_hash=? AND share_id=?').bind(hash,id).first();
+  if(!session||session.expires_at<=now)fail(401,'비밀번호를 다시 입력해 주세요.');
+  return liveShare(env,id,now);
+}
+async function fileResponse(env,id) {
+  const file=await env.DB.prepare('SELECT * FROM attachments WHERE id=?').bind(id).first();
+  if(!file)fail(404,'파일을 찾지 못했어요.');
+  let seq=0;
+  const stream=new ReadableStream({async pull(controller){try{const chunk=await env.DB.prepare('SELECT data FROM attachment_chunks WHERE file_id=? AND seq=?').bind(id,seq++).first();if(!chunk){controller.close();return;}controller.enqueue(new Uint8Array(chunk.data));}catch(error){controller.error(error);}}});
+  return new Response(stream,{headers:{'Content-Type':file.mime||'application/octet-stream','Content-Length':String(file.size),'Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(file.name),'X-Content-Type-Options':'nosniff'}});
+}
 async function route(request, env, now) {
   const path = new URL(request.url).pathname;
   const method = request.method;
@@ -166,6 +190,14 @@ async function route(request, env, now) {
     await env.DB.prepare('INSERT INTO sessions(token_hash,expires_at) VALUES (?,?)').bind(await digest(token), now + SESSION_SECONDS).run();
     return {token};
   }
+  const sharedFile=path.match(/^\/api\/shared\/([a-f0-9]{64})\/files\/([A-Za-z0-9_-]{1,100})$/);
+  if(sharedFile&&method==='GET') {
+    const share=await sharedSession(request,env,sharedFile[1],now),snapshot=await currentSharedSnapshot(share,env);
+    if(!snapshot.options?.tabs.includes('materials')||snapshot.options.files===false)fail(403,'공유하지 않은 첨부파일이에요.');
+    const file=await env.DB.prepare('SELECT trip_id FROM attachments WHERE id=?').bind(sharedFile[2]).first();
+    if(!file||file.trip_id!==snapshot.planner.id)fail(404,'파일을 찾지 못했어요.');
+    return fileResponse(env,sharedFile[2]);
+  }
   const shared = path.match(/^\/api\/shared\/([a-f0-9]+)(\/unlock)?$/);
   if (shared) {
     const [, id, unlock] = shared;
@@ -178,17 +210,35 @@ async function route(request, env, now) {
       return {token};
     }
     if (!unlock && method === 'GET') {
-      const hash = await bearer(request);
-      const session = await env.DB.prepare('SELECT * FROM share_sessions WHERE token_hash=? AND share_id=?').bind(hash, id).first();
-      if (!session || session.expires_at <= now) fail(401, '비밀번호를 다시 입력해 주세요.');
-      const share = await liveShare(env, id, now);
-      const snapshot=JSON.parse(share.payload),cipher=snapshot._mapCipher;delete snapshot._mapCipher;delete snapshot._passwordCipher;
+      const share=await sharedSession(request,env,id,now);
+      const snapshot=await currentSharedSnapshot(share,env),cipher=snapshot._mapCipher;delete snapshot._mapCipher;delete snapshot._passwordCipher;
       const mapKey=snapshot.options?.map===false?'':(cipher?await decryptMapKey(cipher,env):env.MAPS_BROWSER_KEY||'');
-      return {trip:snapshot, expiresAt:share.expires_at, mapKey};
+      const files=snapshot.options?.tabs.includes('materials')&&snapshot.options.files!==false?(await env.DB.prepare('SELECT id,resource_id,stop_id,name,mime,size,updated_at FROM attachments WHERE trip_id=?').bind(snapshot.planner.id).all()).results:[];
+      snapshot.updatedAt=String(snapshot.updatedAt)+':'+files.map(file=>file.id+'-'+file.updated_at).join(',');
+      return {trip:snapshot, expiresAt:share.expires_at, mapKey,files};
     }
     fail(405, '읽기만 가능한 공유예요.');
   }
   const tokenHash = await owner(request, env, now);
+  if(path==='/api/attachments'&&method==='GET')return {files:(await env.DB.prepare('SELECT id,trip_id,resource_id,stop_id,name,mime,size FROM attachments').all()).results};
+  if(path==='/api/attachments'&&method==='POST') {
+    if(Number(request.headers.get('Content-Length'))>5*1024*1024+65536)fail(413,'공유 첨부파일은 5MB 이하로 올려 주세요.');
+    const form=await request.formData(),file=form.get('file');let meta;
+    try{meta=JSON.parse(form.get('metadata'));}catch{fail(400,'파일 정보를 확인해 주세요.');}
+    if(!file||typeof file.arrayBuffer!=='function'||file.size>5*1024*1024||!file.size||!/^[-\w]{1,100}$/.test(meta.id||''))fail(400,'공유 첨부파일은 5MB 이하로 올려 주세요.');
+    const book=await env.DB.prepare('SELECT payload FROM books WHERE id=1').first();
+    if(!book||!JSON.parse(book.payload).trips.some(trip=>trip.id===meta.tripId))fail(404,'여행을 먼저 저장해 주세요.');
+    const usage=await env.DB.prepare('SELECT coalesce(sum(size),0) AS n FROM attachments').first();
+    const previous=await env.DB.prepare('SELECT size FROM attachments WHERE id=?').bind(meta.id).first();
+    if(usage.n-(previous?.size||0)+file.size>200*1024*1024)fail(413,'첨부파일 저장 공간 200MB를 모두 사용했어요.');
+    const bytes=new Uint8Array(await file.arrayBuffer()),statements=[env.DB.prepare('DELETE FROM attachment_chunks WHERE file_id=?').bind(meta.id)];
+    for(let offset=0,seq=0;offset<bytes.length;offset+=256*1024,seq++)statements.push(env.DB.prepare('INSERT INTO attachment_chunks(file_id,seq,data) VALUES (?,?,?)').bind(meta.id,seq,bytes.slice(offset,offset+256*1024).buffer));
+    statements.push(env.DB.prepare('INSERT OR REPLACE INTO attachments(id,trip_id,resource_id,stop_id,name,mime,size,updated_at) VALUES (?,?,?,?,?,?,?,?)').bind(meta.id,meta.tripId,meta.resourceId||null,meta.stopId||null,text(file.name,240),text(file.type,100),file.size,now));
+    await env.DB.batch(statements);return {ok:true};
+  }
+  const ownerFile=path.match(/^\/api\/attachments\/([A-Za-z0-9_-]{1,100})$/);
+  if(ownerFile&&method==='GET')return fileResponse(env,ownerFile[1]);
+  if(ownerFile&&method==='DELETE'){await env.DB.batch([env.DB.prepare('DELETE FROM attachment_chunks WHERE file_id=?').bind(ownerFile[1]),env.DB.prepare('DELETE FROM attachments WHERE id=?').bind(ownerFile[1])]);return {ok:true};}
   if (path === '/api/logout' && method === 'POST') {
     await env.DB.prepare('DELETE FROM sessions WHERE token_hash=?').bind(tokenHash).run(); return {ok:true};
   }
@@ -266,7 +316,7 @@ export default {
     if (!env.APP_ORIGIN || !env.DB || !env.OWNER_PASSWORD_HASH || !env.OWNER_USERNAME) return new Response(JSON.stringify({error:'서버 설정을 완료해 주세요.'}), {status:503, headers});
     if (!allowedOrigin) return new Response(JSON.stringify({error:'허용되지 않은 접속 주소예요.'}), {status:403, headers});
     if (request.method === 'OPTIONS') return new Response(null, {status:204, headers});
-    try { return new Response(JSON.stringify(await route(request, env, Math.floor(Date.now()/1000))), {headers}); }
+    try {const result=await route(request,env,Math.floor(Date.now()/1000));if(result instanceof Response){const merged=new Headers(headers);result.headers.forEach((value,key)=>merged.set(key,value));return new Response(result.body,{status:result.status,headers:merged});}return new Response(JSON.stringify(result), {headers}); }
     catch (error) { return new Response(JSON.stringify({error:error.status ? error.message : '서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.'}), {status:error.status || 500, headers}); }
   },
   async scheduled(event, env) {

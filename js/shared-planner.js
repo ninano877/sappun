@@ -1,6 +1,9 @@
 // The owner's actual planner renderers, with ephemeral data and read-only interactions.
 const SappunSharedPlanner = (() => {
-  let options={},installed=false;
+  let options={},installed=false,displayedResource=null;
+  function fileRows(files) {
+    return files.map(file=>'<div class="shared-file-row"><span>📄 '+esc(file.name)+'<small>'+Math.ceil(file.size/1024)+' KB</small></span><button type="button" data-shared-file="'+esc(file.id)+'" data-shared-file-mode="open">열기 ↗</button><button type="button" data-shared-file="'+esc(file.id)+'" data-shared-file-mode="download">다운로드</button></div>').join('');
+  }
   const allowed='[data-workspace-view],[data-dayfold],[data-mapday],[data-mobile-day],[data-mobile-day-picker],[data-day-picker-value],[data-day-picker-close],[data-schedule-map-day],.schedule-day-map,[data-mapjump],[data-card-map],[data-detail-map],#show-all-map,#toggle-map-pins,#close-place-detail,[data-shared-close],#schedule-map-dialog .schedule-map-heading button,[data-ledger-clear],.map-pin,.map-travel-label,.gm-control-active,.gm-style button';
   const edits='[data-delete],[data-add],[data-add-place],[data-edit-budget],[data-edit-travelers],[data-tabs-edit],.schedule-drag-handle,.card-inline-tools,.map-searchbox,.temp-location-lookup,#mapsetup,#mapsetup-global,#backup,#restore,#settings,#go-home,#upload,#expenseadd,#dashboard-common,#list-rate,[data-common-expense],[data-prep-add],[data-prep-delete],[data-resource-add],[data-library-upload],[data-resource-delete],.trip-travelers-edit';
   function apply() {
@@ -10,12 +13,16 @@ const SappunSharedPlanner = (() => {
     document.querySelectorAll('.wrap input,.wrap textarea,.wrap select,.wrap [contenteditable],.wrap [draggable=true]').forEach(node=>{node.disabled=true;node.readOnly=true;node.draggable=false;node.removeAttribute('contenteditable');});
     document.querySelectorAll('.ledger-cell').forEach(node=>{node.disabled=true;});
     document.querySelectorAll('.wrap button').forEach(node=>{
-      if(node.matches(allowed)||node.matches('[data-placedetail],[data-stop-action="details"],[data-resource-open]'))return;
+      if(node.matches(allowed)||node.matches('[data-placedetail],[data-stop-action="details"],[data-resource-open],[data-shared-file]'))return;
       if([...node.attributes].some(attr=>/^data-(?:.*-)?(?:add|edit|delete|remove|upload|save|reimburse)(?:-|$)/.test(attr.name)))node.hidden=true;
       else node.disabled=true;
     });
+    if(trip()?.workspaceView==='materials'&&options.files){
+      const host=document.querySelector('#trip-workspace-content');if(host){let files=host.querySelector('.shared-attachment-list');if(!files){files=document.createElement('section');files.className='shared-attachment-list';host.append(files);}const entries=window.SappunSharedFiles?.files||[],signature=entries.map(file=>file.id+file.updated_at).join('|');if(files.dataset.signature!==signature){files.dataset.signature=signature;files.innerHTML='<h3>공유 첨부파일</h3>'+fileRows(entries)+(entries.length?'':'<p class="note">공유된 첨부파일이 없어요.</p>');}}
+    }
   }
   function detail(index) {
+    displayedResource=null;
     const stop=state.days[day]?.[index];if(!stop)return;
     detailContext={tripId:currentTripId,day,stopId:stop.id};
     detailPanel.hidden=false;document.body.classList.add('detail-open');
@@ -23,8 +30,10 @@ const SappunSharedPlanner = (() => {
   }
   function resource(id) {
     const item=state.resources?.find(entry=>entry.id===id);if(!item)return;
+    displayedResource=id;
     detailPanel.hidden=false;document.body.classList.add('detail-open');
-    detailPanel.innerHTML='<div class="detail-heading"><h2>'+esc(item.title)+'</h2><button type="button" data-shared-close aria-label="자료 닫기">×</button></div><div class="detail-body"><p class="shared-note">'+esc(item.note||'')+'</p>'+(item.references||[]).filter(link=>/^https?:\/\//.test(link.url)).map(link=>'<p><a href="'+esc(link.url)+'" target="_blank" rel="noopener noreferrer">'+esc(link.title||link.url)+' ↗</a></p>').join('')+'</div>';
+    const files=(window.SappunSharedFiles?.files||[]).filter(file=>file.resource_id===id||(file.stop_id&&(item.stopIds||[]).includes(file.stop_id)));
+    detailPanel.innerHTML='<div class="detail-heading"><h2>'+esc(item.title)+'</h2><button type="button" data-shared-close aria-label="자료 닫기">×</button></div><div class="detail-body"><p class="shared-note">'+esc(item.note||'')+'</p>'+(item.references||[]).filter(link=>/^https?:\/\//.test(link.url)).map(link=>TravelMedia.link(link.url,link.title,{mode:'preview'})).join('')+fileRows(files)+'</div>';
   }
   function install() {
     if(installed)return;installed=true;
@@ -32,40 +41,47 @@ const SappunSharedPlanner = (() => {
     render=function(...args){
       const active=trip()?.workspaceView==='itinerary'&&trip()?.viewMode==='list'?'list':trip()?.workspaceView||'itinerary';
       if(trip()&&!options.tabs.includes(active)){const next=options.tabs[0];trip().workspaceView=next==='list'?'itinerary':next;trip().viewMode=next==='list'?'list':'map';}
-      const result=before.apply(this,args);apply();return result;
+      const result=before.apply(this,args);apply();if(trip())document.title='공유 · 사뿐 · '+trip().title;return result;
     };
     openDetail=detail;
     // Window capture runs before the editor's document handlers.
     window.addEventListener('click',event=>{
       if(!document.body.classList.contains('shared-readonly'))return;
       const target=event.target;
-      if(target.closest('[data-shared-close]')){event.preventDefault();event.stopImmediatePropagation();closeDetail();return;}
+      const file=target.closest('[data-shared-file]');if(file){event.preventDefault();event.stopImmediatePropagation();const record=window.SappunSharedFiles?.files.find(item=>item.id===file.dataset.sharedFile);if(record)window.SappunSharedFiles.open(record,file.dataset.sharedFileMode);return;}
+      const preview=target.closest('[data-media-mode]');if(preview){event.preventDefault();event.stopImmediatePropagation();const show=preview.dataset.mediaMode==='preview';preview.closest('figure').querySelectorAll('.restored-link-preview,img,video,audio,object').forEach(node=>node.style.display=show?'':'none');preview.dataset.mediaMode=show?'mention':'preview';preview.textContent=show?'미리보기 접기':'미리보기 보기';return;}
+      if(target.closest('[data-shared-close]')){event.preventDefault();event.stopImmediatePropagation();displayedResource=null;closeDetail();return;}
       const res=target.closest('[data-resource-open]');
       if(res){event.preventDefault();event.stopImmediatePropagation();resource(res.dataset.resourceOpen);return;}
       const tab=target.closest('[data-workspace-view]');
       if(tab&&!options.tabs.includes(tab.dataset.workspaceView)){event.preventDefault();event.stopImmediatePropagation();return;}
       if(target.closest(allowed))return;
       const card=target.closest('#stops [data-card-index]');
-      if(card){event.preventDefault();event.stopImmediatePropagation();day=Number(card.closest('[data-group-day]')?.dataset.groupDay||day);detail(Number(card.dataset.cardIndex));return;}
+      if(card){event.preventDefault();event.stopImmediatePropagation();day=Number(card.closest('[data-group-day]')?.dataset.groupDay||day);const index=Number(card.dataset.cardIndex);if(target.closest('[data-placedetail],[data-stop-action="details"]')||!options.map||trip().viewMode==='list')detail(index);else focusCard(index);return;}
       if(target.closest('button,input,textarea,select,[contenteditable],.prep-task')){event.preventDefault();event.stopImmediatePropagation();}
     },true);
     for(const name of ['input','change','submit','dragstart','drop'])window.addEventListener(name,event=>{if(document.body.classList.contains('shared-readonly')){event.preventDefault();event.stopImmediatePropagation();}},true);
     new MutationObserver(apply).observe(document.body,{childList:true,subtree:true});
   }
-  function open(payload,id) {
+  function open(payload,id,preserve=false) {
     options=payload.trip.options;install();
     const t=structuredClone(payload.trip.planner);t.id='shared-'+id;
+    const previous=preserve?trip():null,previousDay=day;
+    if(previous){t.workspaceView=previous.workspaceView;t.viewMode=previous.viewMode;t.closedDays=previous.closedDays;t.mapDisplay=previous.mapDisplay;}
     t.data.settings={...DEFAULT_SETTINGS,...t.data.settings,key:payload.mapKey||''};
     tripBook={version:3,key:payload.mapKey||'',trips:[t]};currentTripId=t.id;state=t.data;
     t.data.days.flat().forEach(normalizeStop);
     window.SAPPUN_SHARED_MAP_KEY=payload.mapKey||'';
     homeOpen=false;home.hidden=true;document.querySelector('.wrap').hidden=false;
-    day=0;selected=0;filter='전체';activeScheduleCard=null;lastOverviewKey='';allMapSignature='';
+    day=preserve?Math.min(previousDay,state.days.length-1):0;selected=0;filter='전체';activeScheduleCard=null;lastOverviewKey='';allMapSignature='';
     document.body.classList.add('shared-readonly');
     document.body.classList.toggle('shared-hide-costs',!options.costs);
+    document.body.classList.toggle('shared-hide-summary',!options.members);
     document.body.classList.toggle('shared-hide-map',!options.map);
     document.querySelector('#cloud-gate').hidden=true;document.body.classList.remove('auth-pending');
     render();if(payload.mapKey&&!gmap)loadGoogle();
+    if(!options.members)document.querySelector('.hero p').textContent=t.location+' · '+t.start+' — '+t.end+' · '+state.settings.people+'명';
+    if(preserve&&displayedResource)resource(displayedResource);
     if(!document.querySelector('.shared-readonly-label')){const badge=document.createElement('span');badge.className='shared-readonly-label';badge.textContent='공유 여행 · 읽기 전용';document.querySelector('body > header').append(badge);}
   }
   function close() {

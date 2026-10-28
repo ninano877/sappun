@@ -15,3 +15,11 @@ CREATE TABLE IF NOT EXISTS share_sessions (
 CREATE TABLE IF NOT EXISTS attempts (
   bucket TEXT PRIMARY KEY, count INTEGER NOT NULL, expires_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS attachments (
+  id TEXT PRIMARY KEY, trip_id TEXT NOT NULL, resource_id TEXT, stop_id TEXT,
+  name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL, updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS attachments_trip ON attachments(trip_id);
+CREATE TABLE IF NOT EXISTS attachment_chunks (
+  file_id TEXT NOT NULL, seq INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY(file_id,seq)
+);

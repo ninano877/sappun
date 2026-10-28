@@ -18,6 +18,13 @@ body.auth-pending > :not(#cloud-gate):not(script):not(link):not(.cloud-dialog) {
 .cloud-password-field .cloud-password-eye:hover { background:#f2f4f6; color:#4e5968; }
 .cloud-saved-password { display:grid; gap:6px; margin:12px 0; font-size:13px; color:#6b7684; }
 .cloud-saved-password input,.cloud-password-reset input { min-height:44px; border:1px solid #e5e8eb; border-radius:10px; padding:10px 12px; background:#f9fafb; font:inherit; }
+.shared-attachment-list { background:#fff; border:1px solid #e5e8eb; border-radius:16px; padding:20px; margin-top:16px; }
+.shared-file-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:14px 0; border-bottom:1px solid #edf0f4; }
+.shared-file-row > span { flex:1; min-width:140px; overflow-wrap:anywhere; color:#333d4b; font-size:14px; }
+.shared-file-row small { display:block; margin-top:4px; color:#8b95a1; font-size:12px; }
+.shared-file-row button { border:1px solid #e5e8eb; border-radius:10px; padding:9px 12px; background:white; color:#3182f6; font-size:12px; }
+body.shared-readonly.shared-hide-summary #summary { display:none!important; }
+.hero .eyebrow:empty,.tripbadge:empty { display:none!important; }
 .cloud-share-options { border:1px solid #e5e8eb; border-radius:14px; padding:12px 14px; margin:0; }
 .cloud-share-options legend { padding:0 4px; font-size:14px; font-weight:700; color:#333d4b; }
 .cloud-form .cloud-share-check { display:flex; align-items:center; gap:9px; margin:9px 0; cursor:pointer; }
@@ -45,7 +52,7 @@ body.shared-readonly.shared-hide-map.mobile-itinerary .layout { padding-top:0!im
 .cloud-status { font-size:12px; color:#6b7684; }
 .cloud-dialog { max-width:480px; width:calc(100% - 32px); box-sizing:border-box; padding:24px; border:1px solid #edf0f4; border-radius:22px; max-height:85dvh; overflow:auto; }
 .cloud-dialog::backdrop { background:rgb(25 31 40 / .38); }
-.cloud-dialog .cloud-close { float:right; border:0; background:#f2f4f6; border-radius:50%; width:32px; height:32px; cursor:pointer; }
+.cloud-dialog .cloud-close { float:right; border:0; background:#ffffff; border-radius:50%; width:32px; height:32px; cursor:pointer; }
 .cloud-share-item { padding:14px 0; border-top:1px solid #edf0f4; }
 .cloud-share-item strong { display:block; }
 .cloud-share-item small { color:#6b7684; }

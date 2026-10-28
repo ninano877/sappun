@@ -2625,10 +2625,11 @@ function render() {
     list = t.viewMode === "list",
     goal = ensureGoal(t);
   $(".hero h1").textContent = t.title;
-  $(".hero .eyebrow").textContent = `${t.location} · ${t.start.slice(0, 4)}`;
-  $(".hero p").textContent = `⌖ ${t.location} · ${t.start} — ${t.end} · ${people}명`;
+  $(".hero .eyebrow").textContent = '';
+  $(".hero p").textContent = `${t.location} · ${people}명`;
   $("title").textContent = "사뿐";
-  $(".tripbadge").textContent = state.days.length + "일의 여행";
+  $(".tripbadge").textContent = '';
+  $(".tripbadge").hidden = true;
   $("#summary").classList.add('trip-summary');
   $("#summary").innerHTML = tripSummaryHtml(t, f.total);
   $("#days").hidden = true;
@@ -3332,6 +3333,7 @@ async function downloadDetailFile(id) {
 }
 async function deleteDetailFile(id) {
   if (!confirm("첨부 파일을 삭제할까요?")) return;
+  await window.SappunCloudFiles?.remove(id);
   await dbop("readwrite", (s) => s.delete(id));
   refreshDetailIfOpen();
 }

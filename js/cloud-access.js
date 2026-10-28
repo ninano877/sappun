@@ -116,6 +116,20 @@
     }
   }
   function setStatus(value) { if (statusNode) statusNode.textContent = value; }
+  // New uploads sync only the files just selected; sharing syncs this trip's files.
+  async function syncShareFiles(tripId, selectedIds = null) {
+    if(sharedViewMode||!ready||!db)return;
+    const files=(await allFiles()).filter(file=>file.tripId===tripId&&file.blob&&(!selectedIds||selectedIds.includes(file.id))&&!['trip-cover','resource-cover'].includes(file.kind));
+    const remote=(await api('/api/attachments')).files;
+    for(const file of files){
+      if(remote.some(item=>item.id===file.id&&item.size===file.blob.size))continue;
+      if(file.blob.size>5*1024*1024)throw Error(file.name+' · 공유 첨부파일은 5MB 이하로 올려 주세요.');
+      const form=new FormData();form.append('metadata',JSON.stringify({id:file.id,tripId,resourceId:file.resourceId,stopId:file.stopId}));form.append('file',file.blob,file.name);
+      const response=await fetch(apiBase+'/api/attachments',{method:'POST',credentials:'omit',headers:{Authorization:'Bearer '+token},body:form,signal:AbortSignal.timeout(60000)});
+      if(!response.ok){const result=await response.json();throw Error(result.error||'첨부파일을 저장하지 못했어요.');}
+    }
+  }
+  window.SappunCloudFiles={upload:async(tripId,ids)=>{if(ready&&ids.length){await syncNow();await syncShareFiles(tripId,ids);}},remove:async id=>{if(ready)await api('/api/attachments/'+encodeURIComponent(id),{method:'DELETE'});}};
   async function syncNow() {
     clearTimeout(timer);
     if (!ready || paused) throw Error('서버 연결을 확인하거나 일정을 다시 불러와 주세요.');
@@ -189,12 +203,12 @@
     const check=(parent,label,checked)=>{const row=el('label','cloud-share-check'),input=el('input');input.type='checkbox';input.checked=checked;row.append(input,el('span','',label));parent.append(row);return input;};
     for(const [key,label] of [['itinerary','여행 일정'],['list','시간표'],['settlement','경비'],['preparation','체크리스트'],['materials','자료실 · 내용과 링크']])tabChecks.set(key,check(selections,trip().workspaceTabs?.find(tab=>tab.key===key)?.label||label,['itinerary','list'].includes(key)));
     const details=el('fieldset','cloud-share-options');details.append(el('legend','','함께 보여줄 정보'));
-    for(const [key,label,checked] of [['map','연결한 지도와 장소 핀',true],['notes','일정 메모',false],['costs','비용 · 예산 · 이동 교통비',false],['members','여행자 이름과 사진',false]])optionChecks.set(key,check(details,label,checked));
+    for(const [key,label,checked] of [['map','연결한 지도와 장소 핀',true],['notes','일정 메모',false],['costs','비용 · 예산 · 이동 교통비',false],['members','여행자 이름과 사진 · 메인 요약 카드',false]])optionChecks.set(key,check(details,label,checked));
     tabChecks.get('settlement').onchange=()=>{if(tabChecks.get('settlement').checked)optionChecks.get('costs').checked=true;};
     optionChecks.get('costs').onchange=()=>{if(!optionChecks.get('costs').checked)tabChecks.get('settlement').checked=false;};
-    const shareSettings=()=>({tripId:targetId,options:{tabs:[...tabChecks].filter(([,input])=>input.checked).map(([key])=>key),...Object.fromEntries([...optionChecks].map(([key,input])=>[key,input.checked]))},mapKey:optionChecks.get('map').checked?(state.settings.key||sessionMapKey()):''});
+    const shareSettings=()=>({tripId:targetId,options:{tabs:[...tabChecks].filter(([,input])=>input.checked).map(([key])=>key),...Object.fromEntries([...optionChecks].map(([key,input])=>[key,input.checked])),files:tabChecks.get('materials').checked},mapKey:optionChecks.get('map').checked?(state.settings.key||sessionMapKey()):''});
     form.append(password.node,expiry.node,selections,details,submit,error);
-    panel.append(info,el('p','cloud-help','선택한 탭을 내 화면과 같은 모습으로 공유해요. 친구는 수정할 수 없어요. 첨부파일의 실제 내용은 제외해요. 지도를 포함하면 친구도 현재 연결한 지도를 사용해요.'),form);
+    panel.append(info,el('p','cloud-help','저장한 일정 수정은 공유 화면에 자동 반영돼요. 자료실을 선택하면 이 여행의 링크와 첨부파일도 공유해요. 새 첨부파일은 내 비공개 서버에 자동 저장돼요. 파일당 5MB, 전체 200MB까지 가능해요.'),form);
     const list = el('div'); panel.append(list);
     const linkFor = id => {const link = new URL('travel-planner.html', location.href); link.search = ''; link.hash = ''; link.searchParams.set('share',id); return link.href;};
     const copy = async (value, note) => {
@@ -229,7 +243,7 @@
           const actions = el('div','cloud-share-actions');
           actions.append(button('링크 복사',() => copy(linkFor(item.id),note),true),button('선택 설정 반영',async event=>{
             event.currentTarget.disabled=true;
-            try{await syncNow();await api('/api/shares/'+item.id,{method:'PATCH',body:shareSettings()});note.textContent='이 링크에 현재 일정과 선택한 정보를 반영했어요. 친구는 새로고침하면 볼 수 있어요.';}
+            try{await syncNow();if(tabChecks.get('materials').checked)await syncShareFiles(targetId);await api('/api/shares/'+item.id,{method:'PATCH',body:shareSettings()});note.textContent='선택한 공유 설정을 반영했어요. 일정 수정은 이후 자동으로 갱신돼요.';}
             catch(err){error.textContent=message(err);}finally{event.currentTarget.disabled=false;}
           },true),button('공유 취소',async event => {
             event.currentTarget.disabled = true;
@@ -245,6 +259,7 @@
       event.preventDefault(); submit.disabled = true; error.textContent = '';
       try {
         await syncNow();
+        if(tabChecks.get('materials').checked)await syncShareFiles(targetId);
         const result = await api('/api/shares',{method:'POST',body:{...shareSettings(),password:password.input.value,expiresAt:Math.floor(new Date(expiry.input.value).getTime()/1000)}});
         password.input.value = '';
         const resultBox = el('div','cloud-share-result'), note = el('p','cloud-help',linkFor(result.id));
@@ -270,10 +285,21 @@
   async function showShared(shareToken) {
     let payload = await api('/api/shared/'+shareId,{auth:shareToken});
     if(payload.trip.planner){
+      window.SappunSharedFiles={files:payload.files||[],open:async(file,mode)=>{
+        const popup=mode==='open'?window.open('about:blank','_blank'):null;if(popup)popup.opener=null;
+        try{
+          const response=await fetch(apiBase+'/api/shared/'+shareId+'/files/'+encodeURIComponent(file.id),{headers:{Authorization:'Bearer '+shareToken},credentials:'omit',cache:'no-store'});
+          if(!response.ok)throw Error('파일을 열지 못했어요. 공유 상태를 확인해 주세요.');
+          const raw=await response.blob(),safe=/^(application\/pdf|image\/(png|jpeg|webp|gif)|text\/plain|video\/mp4|audio\/(mpeg|wav))$/.test(raw.type);
+          const url=URL.createObjectURL(new Blob([raw],{type:safe?raw.type:'application/octet-stream'}));
+          if(popup&&safe)popup.location.href=url;else{popup?.close();const anchor=document.createElement('a');anchor.href=url;anchor.download=file.name;document.body.append(anchor);anchor.click();anchor.remove();}
+          setTimeout(()=>URL.revokeObjectURL(url),600000);
+        }catch(error){popup?.close();toast(message(error));}
+      }};
       SappunSharedPlanner.open(payload,shareId);
       const poll=setInterval(async()=>{
         if(document.hidden)return;
-        try{const updated=await api('/api/shared/'+shareId,{auth:shareToken});if(updated.trip.updatedAt!==payload.trip.updatedAt){payload=updated;SappunSharedPlanner.open(updated,shareId);}}
+        try{const updated=await api('/api/shared/'+shareId,{auth:shareToken});if(updated.trip.updatedAt!==payload.trip.updatedAt){payload=updated;window.SappunSharedFiles.files=updated.files||[];SappunSharedPlanner.open(updated,shareId,true);}}
         catch(err){clearInterval(poll);SappunSharedPlanner.close();sharedLogin(message(err));}
       },30000);
       setTimeout(()=>{clearInterval(poll);SappunSharedPlanner.close();sharedLogin('공유가 만료되었어요.');},Math.max(0,payload.expiresAt*1000-Date.now()));
@@ -378,6 +404,7 @@
     } catch(err) {mapNote.textContent = message(err);}
   }
   if (shareId) {
+    document.title='공유 · 사뿐';
     token = ''; // Shared mode never uses an owner's session or owner endpoints.
     if (!/^[a-f0-9]{64}$/.test(shareId)) entry('공유 링크 확인','올바른 공유 링크로 다시 접속해 주세요.');
     else sharedLogin();
