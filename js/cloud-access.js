@@ -213,8 +213,9 @@
     tabChecks.get('settlement').onchange=()=>{if(tabChecks.get('settlement').checked)optionChecks.get('costs').checked=true;};
     optionChecks.get('costs').onchange=()=>{if(!optionChecks.get('costs').checked)tabChecks.get('settlement').checked=false;};
     const shareSettings=()=>({tripId:targetId,options:{tabs:[...tabChecks].filter(([,input])=>input.checked).map(([key])=>key),...Object.fromEntries([...optionChecks].map(([key,input])=>[key,input.checked])),files:tabChecks.get('materials').checked},mapKey:optionChecks.get('map').checked?(state.settings.key||sessionMapKey()):''});
+    let optionsEdited=false;selections.addEventListener('change',()=>{optionsEdited=true;});details.addEventListener('change',()=>{optionsEdited=true;});
     form.append(password.node,expiry.node,selections,details,submit,error);
-    panel.append(info,el('p','cloud-help','저장한 일정 수정은 공유 화면에 자동 반영돼요. 자료실을 선택하면 이 여행의 링크와 첨부파일도 공유해요. 새 첨부파일은 내 비공개 서버에 자동 저장돼요. 파일당 5MB, 전체 200MB까지 가능해요.'),form);
+    panel.append(info,el('p','cloud-help','공유 내용 업데이트로 최신 일정을 저장해요. 친구는 새로고침 또는 새로 불러오기로 바로 확인할 수 있고, 자동 조회는 하루 한 번이에요. 자료실 첨부파일은 파일당 5MB, 전체 200MB까지 가능해요.'),form);
     const list = el('div'); panel.append(list);
     const linkFor = id => {const link = new URL('travel-planner.html', location.href); link.search = ''; link.hash = ''; link.searchParams.set('share',id); return link.href;};
     const copy = async (value, note) => {
@@ -249,7 +250,7 @@
           const actions = el('div','cloud-share-actions');
           actions.append(button('링크 복사',() => copy(linkFor(item.id),note),true),button('공유 내용 업데이트',async event=>{
             event.currentTarget.disabled=true;
-            try{await prepareSharedCovers(targetId);await syncNow();if(tabChecks.get('materials').checked)await syncShareFiles(targetId);await api('/api/shares/'+item.id,{method:'PATCH',body:shareSettings()});note.textContent='공유 내용과 설정을 업데이트했어요. 친구는 새로고침하거나 새로 불러오기를 누르면 바로 확인할 수 있어요.';}
+            try{const settings=shareSettings();if(!optionsEdited&&item.options)settings.options=item.options;await prepareSharedCovers(targetId);await syncNow();if(settings.options.tabs.includes('materials'))await syncShareFiles(targetId);await api('/api/shares/'+item.id,{method:'PATCH',body:settings});note.textContent='공유 내용을 업데이트했어요. 친구는 새로고침하거나 새로 불러오기를 누르면 바로 확인할 수 있어요.';}
             catch(err){error.textContent=message(err);}finally{event.currentTarget.disabled=false;}
           },true),button('공유 취소',async event => {
             event.currentTarget.disabled = true;
