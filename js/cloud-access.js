@@ -173,7 +173,7 @@
   }
   function accountDialog() {
     const panel = dialog('내 계정'), error = el('p','cloud-error');
-    const saveButton = button('서버 저장 다시 시도',async () => {
+    const saveButton = button('내 일정 서버에 저장',async () => {
       saveButton.disabled = true;
       try { await syncNow(); error.textContent = '서버에 저장했어요.'; } catch(err) { error.textContent = message(err); }
       finally {saveButton.disabled = false;}
@@ -247,9 +247,9 @@
             reset.append(el('p','cloud-help','이전 링크의 비밀번호는 확인할 수 없어요. 다시 설정하면 이후에는 여기서 볼 수 있어요.'),next.node,apply);row.append(reset);
           }
           const actions = el('div','cloud-share-actions');
-          actions.append(button('링크 복사',() => copy(linkFor(item.id),note),true),button('선택 설정 반영',async event=>{
+          actions.append(button('링크 복사',() => copy(linkFor(item.id),note),true),button('공유 내용 업데이트',async event=>{
             event.currentTarget.disabled=true;
-            try{await prepareSharedCovers(targetId);await syncNow();if(tabChecks.get('materials').checked)await syncShareFiles(targetId);await api('/api/shares/'+item.id,{method:'PATCH',body:shareSettings()});note.textContent='선택한 공유 설정을 반영했어요. 일정 수정은 이후 자동으로 갱신돼요.';}
+            try{await prepareSharedCovers(targetId);await syncNow();if(tabChecks.get('materials').checked)await syncShareFiles(targetId);await api('/api/shares/'+item.id,{method:'PATCH',body:shareSettings()});note.textContent='공유 내용과 설정을 업데이트했어요. 친구는 새로고침하거나 새로 불러오기를 누르면 바로 확인할 수 있어요.';}
             catch(err){error.textContent=message(err);}finally{event.currentTarget.disabled=false;}
           },true),button('공유 취소',async event => {
             event.currentTarget.disabled = true;

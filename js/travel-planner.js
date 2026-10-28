@@ -1594,7 +1594,7 @@ $("#jsonfile").onchange = async (e) => {
   e.target.value = "";
 };
 $(".foot").textContent =
-  "사뿐 v" + version + " · © 2024 사뿐";
+  "사뿐";
 $("#mapsetup").parentElement.querySelector("h2").textContent = "여행 지도";
 save();
 showHome();
