@@ -12,11 +12,10 @@ const SappunSharedPlanner = (() => {
     const names={itinerary:'여행 일정',list:'시간표',settlement:'경비',preparation:'체크리스트',materials:'자료실'};
     document.querySelectorAll('#trip-workspace-nav [data-workspace-view]').forEach(node=>{node.hidden=!options.tabs.includes(node.dataset.workspaceView);node.draggable=false;const name=trip()?.workspaceTabs?.find(tab=>tab.key===node.dataset.workspaceView)?.label?.trim()||names[node.dataset.workspaceView];if(name&&node.textContent!==name)node.textContent=name;});
     document.querySelectorAll('[data-dayadd],.schedule-add-row').forEach(node=>node.hidden=true);
-    document.querySelectorAll('#stops .map-stop-card').forEach(card=>{if(card.querySelector('[data-shared-stop-detail]'))return;const action=document.createElement('button');action.type='button';action.className='shared-stop-detail';action.dataset.sharedStopDetail=card.dataset.cardIndex;action.textContent='장소 상세';(card.querySelector('.map-stop-content')||card).append(action);});
     document.querySelectorAll('.wrap input,.wrap textarea,.wrap select,.wrap [contenteditable],.wrap [draggable=true]').forEach(node=>{node.disabled=true;node.readOnly=true;node.draggable=false;node.removeAttribute('contenteditable');});
     document.querySelectorAll('.ledger-cell').forEach(node=>{node.disabled=true;});
     document.querySelectorAll('.wrap button').forEach(node=>{
-      if(node.matches(allowed)||node.matches('[data-placedetail],[data-stop-action="details"],[data-resource-open],[data-shared-file],[data-shared-stop-detail]'))return;
+      if(node.matches(allowed)||node.matches('[data-placedetail],[data-stop-action="details"],[data-resource-open],[data-shared-file],[data-detailicon]'))return;
       if([...node.attributes].some(attr=>/^data-(?:.*-)?(?:add|edit|delete|remove|upload|save|reimburse)(?:-|$)/.test(attr.name)))node.hidden=true;
       else node.disabled=true;
     });
@@ -55,8 +54,7 @@ const SappunSharedPlanner = (() => {
       if(!document.body.classList.contains('shared-readonly'))return;
       const target=event.target;
       if(target.closest('#shared-file-preview'))return;
-      if(target.closest('[data-shared-refresh]'))return;
-      const stopDetail=target.closest('[data-shared-stop-detail]');if(stopDetail){event.preventDefault();event.stopImmediatePropagation();day=Number(stopDetail.closest('[data-group-day]').dataset.groupDay);detail(Number(stopDetail.dataset.sharedStopDetail));return;}
+      const stopDetail=target.closest('[data-detailicon]');if(stopDetail){event.preventDefault();event.stopImmediatePropagation();day=Number(stopDetail.closest('[data-group-day]').dataset.groupDay);detail(Number(stopDetail.dataset.detailicon));return;}
       const file=target.closest('[data-shared-file]');if(file){event.preventDefault();event.stopImmediatePropagation();const record=window.SappunSharedFiles?.files.find(item=>item.id===file.dataset.sharedFile);if(record)window.SappunSharedFiles.open(record,file.dataset.sharedFileMode);return;}
       const preview=target.closest('[data-media-mode]');if(preview){event.preventDefault();event.stopImmediatePropagation();const show=preview.dataset.mediaMode==='preview';preview.closest('figure').querySelectorAll('.restored-link-preview,img,video,audio,object').forEach(node=>node.style.display=show?'':'none');preview.dataset.mediaMode=show?'mention':'preview';preview.textContent=show?'미리보기 접기':'미리보기 보기';return;}
       if(target.closest('[data-shared-close]')){event.preventDefault();event.stopImmediatePropagation();displayedResource=null;closeDetail();return;}
