@@ -583,8 +583,6 @@ async function lookupSegmentRoute(d, a, b, mode = a.mode, options = {}) {
       throw Error("이 여행 날짜는 Google 대중교통 조회 가능 기간(과거 7일~미래 100일) 밖이에요. Google 길찾기에서 확인하거나 시간을 직접 입력해 주세요.");
   }
   const [origin, destination] = await Promise.all([resolvePlace(a), resolvePlace(b)]);
-  if(travelMode==='TRANSIT'&&/日本|\bJapan\b/i.test([origin.address,destination.address,a.query,b.query].filter(Boolean).join(' ')))
-    throw Error('일본 대중교통은 Google Routes API에서 지원하지 않아요. Google 지도에서 길찾기를 확인한 뒤 소요 시간을 입력해 주세요.');
   const { Route } = await google.maps.importLibrary("routes");
   const request = {
     origin: { lat: origin.lat, lng: origin.lng }, destination: { lat: destination.lat, lng: destination.lng },
@@ -2369,7 +2367,6 @@ document.addEventListener('click',event=>{const dayButton=event.target.closest('
 function segmentBlock(d, i) {
   const s = state.days[d][i], next = state.days[d][i + 1];
   if (!next) return "";
-  const japanTransit=[s.query,next.query,typeof savedPoint==='function'?savedPoint(s)?.address:'',typeof savedPoint==='function'?savedPoint(next)?.address:''].some(text=>/日本|\bJapan\b|일본/.test(text||''));
   const entered = hasSegment(s), route = currentRoute(d, i);
   const minutes = entered ? (s.minutes ?? (route?.status === "ok" ? route.minutes : null)) : null;
   const distance = entered && route?.status === "ok" && route.distance > 0
@@ -2380,8 +2377,8 @@ function segmentBlock(d, i) {
       <summary aria-label="${esc(s.name)}에서 ${esc(next.name)}까지 이동 설정">${entered ? transportIcon[s.mode] || "↳" : "＋"} <span>${esc(summary)}</span><span class="segment-chevron" aria-hidden="true">⌄</span></summary>
       <div class="segment-menu" role="group" aria-label="이동 수단과 경로 설정">
         <p class="segment-menu-heading">이동 수단</p>
-        ${(japanTransit?["도보","택시"]:["도보","대중교통","택시"]).map(mode => `<button type="button" data-segment-mode="${mode}" aria-pressed="${entered && s.mode === mode}">${transportIcon[mode]} ${mode}${entered && s.mode === mode ? '<span class="segment-check">✓</span>' : ""}</button>`).join("")}
-        ${!(japanTransit&&s.mode==='대중교통')?'<button type="button" data-segment-lookup>⌕ Google 소요 시간 조회</button>':''}
+        ${["도보","대중교통","택시"].map(mode => `<button type="button" data-segment-mode="${mode}" aria-pressed="${entered && s.mode === mode}">${transportIcon[mode]} ${mode}${entered && s.mode === mode ? '<span class="segment-check">✓</span>' : ""}</button>`).join("")}
+        <button type="button" data-segment-lookup>⌕ Google 소요 시간 조회</button>
         <a class="segment-external-directions" href="https://www.google.com/maps/dir/?api=1&amp;origin=${encodeURIComponent(s.query||s.name)}&amp;destination=${encodeURIComponent(next.query||next.name)}&amp;travelmode=${s.mode==='도보'?'walking':s.mode==='택시'?'driving':'transit'}" target="_blank" rel="noopener">↗ Google 지도에서 길찾기</a>
         <div class="segment-menu-divider"></div>
         <button type="button" data-segment-settings>◷ 시간·교통비 직접 입력</button>
@@ -2962,7 +2959,6 @@ function leg(i) {
     ${TravelComponents.choices("이동 수단", "mode", [...modes, "없음"], s.noTravel ? "없음" : s.mode).replace(">없음</button>", ">구간 없음</button>")}
     <details class="segment-route-search" aria-label="Google 경로 조회"><summary>Google 경로 조회 · 선택</summary>
       <div class="segment-route-search-heading"><b>Google 길찾기</b><button type="button" id="segment-route-search" class="primary">경로·소요 시간 조회</button></div>
-      <a class="segment-external-directions" href="https://www.google.com/maps/dir/?api=1&amp;origin=${encodeURIComponent(s.query||s.name)}&amp;destination=${encodeURIComponent(next.query||next.name)}&amp;travelmode=${s.mode==='도보'?'walking':s.mode==='택시'?'driving':'transit'}" target="_blank" rel="noopener">↗ Google 지도에서 길찾기</a>
       <p id="segment-route-status" class="note" role="status" aria-live="polite">이동 수단을 선택하고 예상 시간과 경로를 확인해 보세요.</p>
       ${TravelComponents.choices("조회 출발 기준","routebasis",[{value:"schedule",label:"일정 출발 시각"},{value:"now",label:"현재 시각"}],"schedule")}
       <div id="segment-route-result" hidden></div>
@@ -2992,17 +2988,15 @@ function leg(i) {
   );
   const panel = $(".segment-route-search"), status = $("#segment-route-status"), resultBox = $("#segment-route-result"), search = $("#segment-route-search"), external = $("#segment-route-external");
   const active = () => currentTripId === tripId && panel.isConnected && $("#modal").open;
-  const japanTransit=[s.query,next.query,typeof savedPoint==='function'?savedPoint(s)?.address:'',typeof savedPoint==='function'?savedPoint(next)?.address:''].some(text=>/日本|\bJapan\b|일본/.test(text||''));
   const updateMode = () => {
     requestVersion++; draftRoute = null; appliedRoute = null;
     resultBox.hidden = true; resultBox.innerHTML = "";
     const mode = val("mode"), supported = ["대중교통", "도보", "택시"].includes(mode);
     $('#segment-expense-fields').hidden=mode==='도보'||mode==='없음';
-    search.hidden=japanTransit&&mode==='대중교통';
+    search.hidden=!supported;
     search.disabled = !supported||search.hidden; search.textContent = "경로·소요 시간 조회";
     external.hidden = !supported; external.href = route({ ...s, mode }, next);
     status.textContent = supported ? mode + " 기준 · " + (hasStopTime(s) ? stopEnd(s) + " 출발" : "장소 사이") + " 경로를 조회해요." : mode === "없음" ? "이 구간은 표시하지 않아요." : "예약한 교통편의 소요 시간을 직접 입력해 주세요.";
-    if(japanTransit&&mode==='대중교통')status.textContent='일본 대중교통은 시간을 직접 입력해 주세요. 지도에서는 실선으로 연결해요.';
     status.classList.toggle("warning", !supported);
   };
   const onModeChange = event => {
