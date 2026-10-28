@@ -84,6 +84,9 @@ body.shared-readonly.shared-hide-map.mobile-itinerary .layout { padding-top:0!im
 .cloud-share-item strong { display:block; }
 .cloud-share-item small { color:#6b7684; }
 .cloud-share-actions { display:flex; gap:8px; margin-top:8px; }
+.cloud-account-actions { display:flex; flex-wrap:wrap; gap:12px; margin-top:18px; }
+.cloud-account-actions .cloud-button { min-height:48px; }
+@media(max-width:540px) { .cloud-account-actions { flex-direction:column; } .cloud-account-actions .cloud-button { width:100%; } }
 .cloud-share-result { overflow-wrap:anywhere; padding:12px; background:#f2f6ff; border-radius:12px; }
 .shared-page { max-width:900px; margin:auto; padding-bottom:32px; }
 .shared-header { padding:20px; background:white; }

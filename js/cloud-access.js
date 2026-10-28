@@ -195,7 +195,8 @@
       try { await api('/api/logout',{method:'POST'}); panel.close(); ready = false; clearTimeout(timer); login(); }
       catch(err) {error.textContent = message(err);}
     },true);
-    panel.append(el('p','','내 일정은 비공개로 저장해요. 로그아웃해도 이 기기에 저장한 일정은 남아요.'),saveButton,reload,logout,error);
+    const actions=el('div','cloud-account-actions');actions.append(saveButton,reload,logout);
+    panel.append(el('p','','내 일정은 비공개로 저장해요. 로그아웃해도 이 기기에 저장한 일정은 남아요.'),actions,error);
   }
   async function shareDialog() {
     if (!trip() || homeOpen) { toast('공유할 여행을 먼저 열어 주세요.'); return; }
