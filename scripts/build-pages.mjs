@@ -1,6 +1,7 @@
 import {readFile, writeFile, mkdir, copyFile, readdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {dirname, resolve, relative, join} from 'node:path';
+import {createHash} from 'node:crypto';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const output = join(root, 'dist');
@@ -21,6 +22,14 @@ for (const path of files) {
   await mkdir(dirname(destination), {recursive:true});
   await copyFile(join(root,path),destination);
 }
+// Changed assets get a new URL so a normal refresh cannot reuse an older editor.
+let publishedHtml=html;
+for(const path of files) {
+  if(!/\.(?:js|css)$/.test(path))continue;
+  const hash=createHash('sha256').update(await readFile(join(output,path))).digest('hex').slice(0,12);
+  publishedHtml=publishedHtml.replaceAll('"'+path+'"','"'+path+'?v='+hash+'"');
+}
+await writeFile(join(output,'travel-planner.html'),publishedHtml);
 await writeFile(join(output,'.nojekyll'),'');
 files.add('.nojekyll');
 async function verify(directory) {

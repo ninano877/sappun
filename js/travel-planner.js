@@ -209,6 +209,7 @@ function modal(html, fn, { closeButton = false } = {}) {
   $("#cancel").hidden = closeButton;
   submitHandler = fn;
   $("#modal").showModal();
+  $("#formbody").scrollTop = 0;
 }
 $("#cancel").onclick = () => $("#modal").close();
 $("#modal-close").onclick = () => $("#modal").close();
