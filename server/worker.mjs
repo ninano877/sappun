@@ -199,13 +199,15 @@ async function route(request, env, now) {
     if(!file||file.trip_id!==snapshot.planner.id)fail(404,'파일을 찾지 못했어요.');
     return fileResponse(env,sharedFile[2]);
   }
+  const access=path.match(/^\/api\/shared\/([a-f0-9]{64})\/access$/);
+  if(access&&method==='GET'){const share=await liveShare(env,access[1],now);return {passwordRequired:!!share.password_hash};}
   const shared = path.match(/^\/api\/shared\/([a-f0-9]+)(\/unlock)?$/);
   if (shared) {
     const [, id, unlock] = shared;
     if (unlock && method === 'POST') {
       await throttle(env, `share:${id}:${request.headers.get('CF-Connecting-IP') || 'unknown'}`, now);
       const share = await liveShare(env, id, now), input = await body(request);
-      if (typeof input.password !== 'string' || input.password.length > 256 || !await verifyPassword(input.password, share.password_hash)) fail(401, '비밀번호를 확인해 주세요.');
+      if (share.password_hash && (typeof input.password !== 'string' || input.password.length > 256 || !await verifyPassword(input.password, share.password_hash))) fail(401, '비밀번호를 확인해 주세요.');
       const token = randomToken();
       await env.DB.prepare('INSERT INTO share_sessions(token_hash,share_id,expires_at) VALUES (?,?,?)').bind(await digest(token), id, Math.min(share.expires_at, now + 3600)).run();
       return {token};
@@ -259,11 +261,12 @@ async function route(request, env, now) {
     return {revision:input.revision + 1};
   }
   if (path === '/api/shares' && method === 'GET') {
-    const result = await env.DB.prepare('SELECT id,title,expires_at,revoked,created_at,payload FROM shares WHERE revoked=0 AND expires_at>? ORDER BY created_at DESC').bind(now).all(); return {shares:result.results.map(row=>{const snapshot=JSON.parse(row.payload);const {payload,...item}=row;return {...item,tripId:snapshot.planner?.id,options:snapshot.options,hasPassword:!!snapshot._passwordCipher};})};
+    const result = await env.DB.prepare('SELECT id,title,expires_at,revoked,created_at,payload,password_hash FROM shares WHERE revoked=0 AND expires_at>? ORDER BY created_at DESC').bind(now).all(); return {shares:result.results.map(row=>{const snapshot=JSON.parse(row.payload);const {payload,password_hash,...item}=row;return {...item,tripId:snapshot.planner?.id,options:snapshot.options,passwordRequired:!!password_hash,hasPassword:!!snapshot._passwordCipher};})};
   }
   if (path === '/api/shares' && method === 'POST') {
     const input = await body(request);
-    if (typeof input.password !== 'string' || input.password.length < 8 || input.password.length > 128) fail(400, '공유 비밀번호는 8~128자로 입력해 주세요.');
+    const passwordRequired=input.passwordRequired!==false;
+    if (passwordRequired && (typeof input.password !== 'string' || input.password.length < 8 || input.password.length > 128)) fail(400, '공유 비밀번호는 8~128자로 입력해 주세요.');
     if (!Number.isInteger(input.expiresAt) || input.expiresAt <= now || input.expiresAt > now + 90*86400) fail(400, '만료일은 현재부터 90일 이내로 정해 주세요.');
     const count = await env.DB.prepare('SELECT count(*) AS n FROM shares WHERE revoked=0 AND expires_at>?').bind(now).first();
     if (count.n >= MAX_SHARES) fail(400, '활성 공유는 최대 30개예요. 이전 공유를 취소해 주세요.');
@@ -272,8 +275,8 @@ async function route(request, env, now) {
     if (!trip) fail(404, '여행을 먼저 서버에 저장해 주세요.');
     const snapshot = shareSnapshot(trip,input.options), id = randomToken();
     if(snapshot.options.map)snapshot._mapCipher=await encryptMapKey(input.mapKey||env.MAPS_BROWSER_KEY||'',env);
-    snapshot._passwordCipher=await encryptMapKey(input.password,env);
-    await env.DB.prepare('INSERT INTO shares(id,title,payload,password_hash,expires_at,created_at) VALUES (?,?,?,?,?,?)').bind(id, snapshot.title, JSON.stringify(snapshot), await passwordHash(input.password), input.expiresAt, now).run();
+    if(passwordRequired)snapshot._passwordCipher=await encryptMapKey(input.password,env);
+    await env.DB.prepare('INSERT INTO shares(id,title,payload,password_hash,expires_at,created_at) VALUES (?,?,?,?,?,?)').bind(id, snapshot.title, JSON.stringify(snapshot), passwordRequired?await passwordHash(input.password):'', input.expiresAt, now).run();
     return {id};
   }
   const revoke = path.match(/^\/api\/shares\/([a-f0-9]{64})$/);

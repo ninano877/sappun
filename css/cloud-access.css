@@ -110,3 +110,9 @@ body.shared-readonly.shared-hide-map.mobile-itinerary .layout { padding-top:0!im
   .cloud-account { margin-left:auto; gap:4px; }.cloud-account .cloud-status { display:none; }
   .cloud-dialog.day-sheet { position:fixed; inset:auto 0 0; margin:0; width:100%; max-width:none; max-height:75dvh; border-radius:24px 24px 0 0; padding-bottom:max(24px,env(safe-area-inset-bottom)); }
 }
+
+body.shared-readonly .hero { display:flex; flex-direction:column; align-items:stretch; min-width:0; }
+body.shared-readonly .hero > * { min-width:0; max-width:100%; box-sizing:border-box; }
+body.shared-readonly .hero h1,body.shared-readonly .hero p { white-space:normal; overflow:visible; overflow-wrap:anywhere; text-overflow:clip; }
+body.shared-readonly .shared-trip-cover { display:block; width:100%; height:220px; flex:none; margin:0 0 12px; }
+@media(max-width:760px){ body.shared-readonly .shared-trip-cover { height:180px; max-height:none; } }
