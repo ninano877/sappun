@@ -171,11 +171,12 @@
     if (document.querySelector('.cloud-account')) return;
     const account = el('div','cloud-account'); statusNode = el('span','cloud-status','서버에 저장됨'); statusNode.setAttribute('role','status');
     const manage = button('내 계정', () => accountDialog(), true); account.append(statusNode,manage);
-    document.querySelector('body > header').append(account);
+    document.querySelector('body > header .tools').append(account);
     shareButton = button('공유', () => shareDialog(), true); document.querySelector('body > header .tools').append(shareButton);
   }
   function accountDialog() {
     const panel = dialog('내 계정'), error = el('p','cloud-error');
+    panel.classList.add('cloud-account-dialog');
     const saveButton = button('내 일정 서버에 저장',async () => {
       saveButton.disabled = true;
       try { await syncNow(); error.textContent = '서버에 저장했어요.'; } catch(err) { error.textContent = message(err); }
@@ -197,6 +198,7 @@
     },true);
     const actions=el('div','cloud-account-actions');actions.append(saveButton,reload,logout);
     panel.append(el('p','','내 일정은 비공개로 저장해요. 로그아웃해도 이 기기에 저장한 일정은 남아요.'),actions,error);
+    const heading=panel.querySelector('h2');heading.tabIndex=-1;heading.focus({preventScroll:true});
   }
   async function shareDialog() {
     if (!trip() || homeOpen) { toast('공유할 여행을 먼저 열어 주세요.'); return; }

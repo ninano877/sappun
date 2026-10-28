@@ -84,9 +84,16 @@ body.shared-readonly.shared-hide-map.mobile-itinerary .layout { padding-top:0!im
 .cloud-share-item strong { display:block; }
 .cloud-share-item small { color:#6b7684; }
 .cloud-share-actions { display:flex; gap:8px; margin-top:8px; }
-.cloud-account-actions { display:flex; flex-wrap:wrap; gap:12px; margin-top:18px; }
-.cloud-account-actions .cloud-button { min-height:48px; }
-@media(max-width:540px) { .cloud-account-actions { flex-direction:column; } .cloud-account-actions .cloud-button { width:100%; } }
+.cloud-account-actions { display:grid; grid-template-columns:minmax(0,1fr); gap:10px; margin-top:22px; }
+.cloud-account-actions .cloud-button { width:100%; min-height:50px; text-align:left; padding:14px 16px; }
+.cloud-account-dialog { position:relative; max-width:420px; padding:28px 24px 24px; }
+.cloud-account-dialog > h2 { margin:0 40px 12px 0; outline:none; }
+.cloud-account-dialog > p { line-height:1.7; font-size:14px; margin:0; }
+.cloud-account-dialog .cloud-close { position:absolute; top:18px; right:18px; float:none; color:#8b95a1; background:#f2f4f6; }
+.cloud-account-dialog .cloud-error:empty { display:none; }
+body.trip-menu-shell .mobile-menu-tools .cloud-account { grid-column:1 / -1; display:flex; flex-direction:column; align-items:stretch; gap:4px; margin:8px 0 0; padding-top:10px; border-top:1px solid #f2f4f6; }
+body.trip-menu-shell .mobile-menu-tools .cloud-account button { width:100%; }
+body.trip-menu-shell .mobile-menu-tools .cloud-status { display:block; padding:4px 12px; font-size:11px; color:#8b95a1; }
 .cloud-share-result { overflow-wrap:anywhere; padding:12px; background:#f2f6ff; border-radius:12px; }
 .shared-page { max-width:900px; margin:auto; padding-bottom:32px; }
 .shared-header { padding:20px; background:white; }
