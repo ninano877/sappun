@@ -9,7 +9,9 @@
     ['localhost', '127.0.0.1', '[::1]'].includes(pageAddress.hostname));
   let token = sessionStorage.getItem('sappun-owner-session') || '';
   let revision = 0, ready = false, paused = false, timer, inFlight, statusNode, shareButton;
-  let lastSaved = '';
+  let lastSaved = '', lastSavedAt=null;
+  const formatSavedTime=value=>{if(!value)return '아직 기록 없음';const parts=Object.fromEntries(new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(value)).map(part=>[part.type,part.value]));return parts.year+'년 '+parts.month+'월 '+parts.day+'일 '+parts.hour+'시 '+parts.minute+'분';};
+  const savedStatus=()=>lastSavedAt?'서버 저장 · '+formatSavedTime(lastSavedAt):'서버에 저장됨';
   const el = (tag, className, content) => {
     const node = document.createElement(tag); if (className) node.className = className;
     if (content !== undefined) node.textContent = content; return node;
@@ -104,18 +106,18 @@
     });
   }
   async function initializeOwner() {
-    const remote = await api('/api/book'); revision = remote.revision;
+    const remote = await api('/api/book'); revision = remote.revision;lastSavedAt=remote.savedAt||null;
     if (remote.mapKey) { storeSessionMapKey(remote.mapKey); tripBook.key = remote.mapKey; state.settings.key = remote.mapKey; }
     const choice = await chooseInitial(remote);
     paused = false; ready = true;
     lastSaved = choice === 'remote' ? bookString() : '';
     installOwnerTools(); gate.hidden = true; document.body.classList.remove('auth-pending');
-    if (statusNode) statusNode.textContent = '서버에 저장됨';
+    if (statusNode) statusNode.textContent = savedStatus();
     if (choice === 'local') {
       try { await syncNow(); } catch (err) { if (ready) toast(message(err)); }
     }
   }
-  function setStatus(value) { if (statusNode) statusNode.textContent = value; }
+  function setStatus(value) { if (statusNode) statusNode.textContent = value;document.querySelectorAll('[data-cloud-saved-at]').forEach(node=>node.textContent='최근 서버 저장: '+formatSavedTime(lastSavedAt)); }
   // New uploads sync only the files just selected; sharing syncs this trip's files.
   async function prepareSharedCovers(tripId){
     if(!db)return;const target=tripBook.trips.find(item=>item.id===tripId);if(!target)return;
@@ -140,10 +142,10 @@
     clearTimeout(timer); timer=null;
     if (!ready || paused) throw Error('서버 연결을 확인하거나 일정을 다시 불러와 주세요.');
     if (inFlight) { await inFlight; return syncNow(); }
-    const packed = bookString(); if (packed === lastSaved) {setStatus('서버에 저장됨');return;}
+    const packed = bookString(); if (packed === lastSaved) {setStatus(savedStatus());return;}
     setStatus('저장 중…');
     inFlight = api('/api/book',{method:'PUT',body:{book:JSON.parse(packed),revision}})
-      .then(result => {revision = result.revision; lastSaved = packed; setStatus('서버에 저장됨');})
+      .then(result => {revision = result.revision;lastSavedAt=result.savedAt; lastSaved = packed; setStatus(savedStatus());})
       .catch(err => {
         if (err.status === 409) {paused = true; setStatus('다른 기기에서 수정됨 · 저장 확인 필요');}
         else if (err.status === 401) {paused = true; login('로그인 시간이 지났어요. 이 기기의 변경 내용은 보관되어 있어요.');}
@@ -156,7 +158,7 @@
   function queueSync() {
     if (!ready || paused) return;
     if (inFlight) return; // The active save drains any changes made during its request.
-    if (bookString() === lastSaved) {clearTimeout(timer);timer=null;setStatus('서버에 저장됨');return;}
+    if (bookString() === lastSaved) {clearTimeout(timer);timer=null;setStatus(savedStatus());return;}
     setStatus('변경 내용 저장 대기…');
     if (timer) return; // Repeated render/save calls must not postpone the pending write.
     timer = setTimeout(() => {timer=null;syncNow().catch(() => {});}, 1200);
@@ -169,17 +171,31 @@
   }
   function installOwnerTools() {
     if (document.querySelector('.cloud-account')) return;
-    const account = el('div','cloud-account'); statusNode = el('span','cloud-status','서버에 저장됨'); statusNode.setAttribute('role','status');
+    const account = el('div','cloud-account'); statusNode = el('span','cloud-status',savedStatus()); statusNode.setAttribute('role','status');
     const manage = button('내 계정', () => accountDialog(), true); account.append(statusNode,manage);
     document.querySelector('body > header .tools').append(account);
-    shareButton = button('공유', () => shareDialog(), true); document.querySelector('body > header .tools').append(shareButton);
+    shareButton = button('공유', () => shareDialog(), true); document.querySelector('body > header .tools').append(shareButton,button('일정 텍스트 복사',scheduleTextDialog,true));
+  }
+  function scheduleTextDialog() {
+    const target=trip();if(!target||homeOpen){toast('여행을 먼저 열어 주세요.');return;}
+    const panel=dialog('일정 텍스트'),select=el('select'),preview=el('textarea','cloud-schedule-text'),note=el('p','cloud-help');
+    select.setAttribute('aria-label','복사할 날짜');preview.readOnly=true;preview.setAttribute('aria-label','시간과 일정 이름');
+    const all=el('option','','전체 일정');all.value='all';select.append(all);
+    target.data.days.forEach((_,d)=>{const option=el('option','','Day '+(d+1)+' · '+tripDate(d));option.value=d;select.append(option);});
+    const update=()=>{preview.value=target.data.days.map((stops,d)=>{
+      if(select.value!=='all'&&Number(select.value)!==d)return '';
+      return 'Day '+(d+1)+' · '+tripDate(d)+'\n'+stops.map(stop=>(hasStopTime(stop)?stopStart(stop)+'–'+(scheduleEndDate(stop,d)!==(stop.startDate||tripDate(d))?scheduleEndDate(stop,d).slice(5).replace('-','/')+' ':'')+stopEnd(stop):'시간 미정')+'  '+stop.name).join('\n');
+    }).filter(Boolean).join('\n\n');};select.onchange=update;update();
+    const copy=button('텍스트 복사',async()=>{try{await navigator.clipboard.writeText(preview.value);note.textContent='복사했어요. 채팅에 붙여넣어 주세요.';}catch{preview.focus();preview.select();note.textContent='글을 선택했어요. 복사해 주세요.';}});
+    const download=button('텍스트 파일 다운로드',()=>{const url=URL.createObjectURL(new Blob(['\ufeff'+preview.value],{type:'text/plain;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='여행일정.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);},true);
+    const actions=el('div','cloud-share-actions');actions.append(copy,download);panel.append(el('p','cloud-help','날짜·시간·일정 이름만 포함해요.'),select,preview,actions,note);
   }
   function accountDialog() {
     const panel = dialog('내 계정'), error = el('p','cloud-error');
     panel.classList.add('cloud-account-dialog');
     const saveButton = button('내 일정 서버에 저장',async () => {
       saveButton.disabled = true;
-      try { await syncNow(); error.textContent = '서버에 저장했어요.'; } catch(err) { error.textContent = message(err); }
+      try { await syncNow(); error.textContent = '최근 서버 저장: '+formatSavedTime(lastSavedAt); } catch(err) { error.textContent = message(err); }
       finally {saveButton.disabled = false;}
     });
     const reload = button('서버 일정 다시 불러오기', async () => {
@@ -187,7 +203,7 @@
       try {
         const remote = await api('/api/book');
         if (remote.book) replaceBook(remote.book);
-        revision = remote.revision; lastSaved = remote.book ? bookString() : ''; paused = false; queueSync(); panel.close();
+        revision = remote.revision;lastSavedAt=remote.savedAt||null; lastSaved = remote.book ? bookString() : ''; paused = false; queueSync(); panel.close();
       } catch(err) {error.textContent = message(err);}
     }, true);
     const logout = button('로그아웃',async () => {
@@ -197,6 +213,8 @@
       catch(err) {error.textContent = message(err);}
     },true);
     const actions=el('div','cloud-account-actions');actions.append(saveButton,reload,logout);
+    const savedNote=el('p','cloud-help','최근 서버 저장: '+formatSavedTime(lastSavedAt));
+    savedNote.dataset.cloudSavedAt='';panel.append(savedNote);
     panel.append(el('p','','내 일정은 비공개로 저장해요. 로그아웃해도 이 기기에 저장한 일정은 남아요.'),actions,error);
     const heading=panel.querySelector('h2');heading.tabIndex=-1;heading.focus({preventScroll:true});
   }
@@ -239,6 +257,7 @@
         const row = el('div','cloud-share-item');
         const active = !item.revoked && item.expires_at*1000 > Date.now();
         const note = el('p','cloud-help');
+        const updatedNote=el('p','cloud-help','최근 공유 업데이트: '+formatSavedTime(item.updatedAt||item.created_at*1000));row.append(updatedNote);
         row.append(el('strong','',item.title),el('small','',active ? new Date(item.expires_at*1000).toLocaleString('ko-KR')+'까지' : '공유 종료'));
         if (active) {
           if(item.passwordRequired===false){row.append(el('p','cloud-help','비밀번호 없음 · 링크를 가진 누구나 볼 수 있어요.'));}
@@ -261,7 +280,7 @@
           const actions = el('div','cloud-share-actions');
           actions.append(button('링크 복사',() => copy(linkFor(item.id),note),true),button('공유 내용 업데이트',async event=>{
             event.currentTarget.disabled=true;
-            try{const settings=shareSettings();if(!optionsEdited&&item.options)settings.options=item.options;await prepareSharedCovers(targetId);await syncNow();if(settings.options.tabs.includes('materials'))await syncShareFiles(targetId);await api('/api/shares/'+item.id,{method:'PATCH',body:settings});note.textContent='공유 내용을 업데이트했어요. 친구는 링크를 다시 열거나 브라우저를 새로고침하면 확인할 수 있어요.';}
+            try{const settings=shareSettings();if(!optionsEdited&&item.options)settings.options=item.options;await prepareSharedCovers(targetId);await syncNow();if(settings.options.tabs.includes('materials'))await syncShareFiles(targetId);const updated=await api('/api/shares/'+item.id,{method:'PATCH',body:settings});updatedNote.textContent='최근 공유 업데이트: '+formatSavedTime(updated.updatedAt);note.textContent='공유 내용을 업데이트했어요. 친구는 링크를 다시 열거나 브라우저를 새로고침하면 확인할 수 있어요.';}
             catch(err){error.textContent=message(err);}finally{event.currentTarget.disabled=false;}
           },true),button('공유 취소',async event => {
             event.currentTarget.disabled = true;

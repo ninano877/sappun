@@ -127,3 +127,5 @@ body.shared-readonly .hero > * { min-width:0; max-width:100%; box-sizing:border-
 body.shared-readonly .hero h1,body.shared-readonly .hero p { white-space:normal; overflow:visible; overflow-wrap:anywhere; text-overflow:clip; }
 body.shared-readonly .shared-trip-cover { display:block; width:100%; height:220px; flex:none; margin:0 0 12px; }
 @media(max-width:760px){ body.shared-readonly .shared-trip-cover { height:180px; max-height:none; } }
+
+.cloud-schedule-text { display:block; box-sizing:border-box; width:100%; height:300px; resize:vertical; overflow:auto; padding:14px; margin-top:14px; border:1px solid #e5e8eb; border-radius:12px; font-family:inherit; font-size:14px; line-height:1.8; white-space:pre-wrap; }

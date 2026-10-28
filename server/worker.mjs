@@ -249,20 +249,22 @@ async function route(request, env, now) {
   }
   if (path === '/api/book' && method === 'GET') {
     const book = await env.DB.prepare('SELECT * FROM books WHERE id=1').first();
-    return {book:book ? JSON.parse(book.payload) : null, revision:book?.revision || 0, mapKey:env.MAPS_BROWSER_KEY || ''};
+    const stored=book?JSON.parse(book.payload):null,savedAt=stored?._serverSavedAt||null;if(stored)delete stored._serverSavedAt;
+    return {book:stored,revision:book?.revision||0,savedAt,mapKey:env.MAPS_BROWSER_KEY||''};
   }
   if (path === '/api/book' && method === 'PUT') {
     const input = await body(request), book = validateBook(input.book);
     if (!Number.isInteger(input.revision) || input.revision < 0) fail(400, '저장 버전을 확인해 주세요.');
+    book._serverSavedAt=Date.now();
     // Atomic compare-and-swap prevents two tabs or devices silently overwriting a newer book.
     const result = input.revision === 0
       ? await env.DB.prepare('INSERT OR IGNORE INTO books(id,payload,revision) VALUES (1,?,1)').bind(JSON.stringify(book)).run()
       : await env.DB.prepare('UPDATE books SET payload=?,revision=revision+1 WHERE id=1 AND revision=?').bind(JSON.stringify(book), input.revision).run();
     if (result.meta.changes !== 1) fail(409, '다른 화면에서 수정했어요. 서버 일정을 다시 불러와 주세요.');
-    return {revision:input.revision + 1};
+    return {revision:input.revision + 1,savedAt:book._serverSavedAt};
   }
   if (path === '/api/shares' && method === 'GET') {
-    const result = await env.DB.prepare('SELECT id,title,expires_at,revoked,created_at,payload,password_hash FROM shares WHERE revoked=0 AND expires_at>? ORDER BY created_at DESC').bind(now).all(); return {shares:result.results.map(row=>{const snapshot=JSON.parse(row.payload);const {payload,password_hash,...item}=row;return {...item,tripId:snapshot.planner?.id,options:snapshot.options,passwordRequired:!!password_hash,hasPassword:!!snapshot._passwordCipher};})};
+    const result = await env.DB.prepare('SELECT id,title,expires_at,revoked,created_at,payload,password_hash FROM shares WHERE revoked=0 AND expires_at>? ORDER BY created_at DESC').bind(now).all(); return {shares:result.results.map(row=>{const snapshot=JSON.parse(row.payload);const {payload,password_hash,...item}=row;return {...item,tripId:snapshot.planner?.id,options:snapshot.options,updatedAt:snapshot.updatedAt,passwordRequired:!!password_hash,hasPassword:!!snapshot._passwordCipher};})};
   }
   if (path === '/api/shares' && method === 'POST') {
     const input = await body(request);
@@ -278,7 +280,7 @@ async function route(request, env, now) {
     if(snapshot.options.map)snapshot._mapCipher=await encryptMapKey(input.mapKey||env.MAPS_BROWSER_KEY||'',env);
     if(passwordRequired)snapshot._passwordCipher=await encryptMapKey(input.password,env);
     await env.DB.prepare('INSERT INTO shares(id,title,payload,password_hash,expires_at,created_at) VALUES (?,?,?,?,?,?)').bind(id, snapshot.title, JSON.stringify(snapshot), passwordRequired?await passwordHash(input.password):'', input.expiresAt, now).run();
-    return {id};
+    return {id,updatedAt:snapshot.updatedAt};
   }
   const revoke = path.match(/^\/api\/shares\/([a-f0-9]{64})$/);
   const sharePassword=path.match(/^\/api\/shares\/([a-f0-9]{64})\/password$/);
@@ -302,7 +304,7 @@ async function route(request, env, now) {
     const snapshot=shareSnapshot(trip,input.options);
     snapshot._passwordCipher=JSON.parse(existing.payload)._passwordCipher||'';
     if(snapshot.options.map)snapshot._mapCipher=await encryptMapKey(input.mapKey||env.MAPS_BROWSER_KEY||'',env);
-    await env.DB.prepare('UPDATE shares SET title=?,payload=? WHERE id=?').bind(snapshot.title,JSON.stringify(snapshot),revoke[1]).run();return {id:revoke[1]};
+    await env.DB.prepare('UPDATE shares SET title=?,payload=? WHERE id=?').bind(snapshot.title,JSON.stringify(snapshot),revoke[1]).run();return {id:revoke[1],updatedAt:snapshot.updatedAt};
   }
   if (revoke && method === 'DELETE') {
     await env.DB.batch([
