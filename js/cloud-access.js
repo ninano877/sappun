@@ -117,6 +117,12 @@
   }
   function setStatus(value) { if (statusNode) statusNode.textContent = value; }
   // New uploads sync only the files just selected; sharing syncs this trip's files.
+  async function prepareSharedCovers(tripId){
+    if(!db)return;const target=tripBook.trips.find(item=>item.id===tripId);if(!target)return;
+    const files=await allFiles(),items=[target,...(target.data.resources||[])];let changed=false;
+    for(const item of items){if(!item.coverFileId||item.sharedCoverId===item.coverFileId)continue;const file=files.find(file=>file.id===item.coverFileId&&file.tripId===tripId);if(!file?.blob)continue;item.sharedCover=await travelCoverData(file.blob);item.sharedCoverId=item.coverFileId;changed=true;}
+    if(changed)save();
+  }
   async function syncShareFiles(tripId, selectedIds = null) {
     if(sharedViewMode||!ready||!db)return;
     const files=(await allFiles()).filter(file=>file.tripId===tripId&&file.blob&&(!selectedIds||selectedIds.includes(file.id))&&!['trip-cover','resource-cover'].includes(file.kind));
@@ -243,7 +249,7 @@
           const actions = el('div','cloud-share-actions');
           actions.append(button('링크 복사',() => copy(linkFor(item.id),note),true),button('선택 설정 반영',async event=>{
             event.currentTarget.disabled=true;
-            try{await syncNow();if(tabChecks.get('materials').checked)await syncShareFiles(targetId);await api('/api/shares/'+item.id,{method:'PATCH',body:shareSettings()});note.textContent='선택한 공유 설정을 반영했어요. 일정 수정은 이후 자동으로 갱신돼요.';}
+            try{await prepareSharedCovers(targetId);await syncNow();if(tabChecks.get('materials').checked)await syncShareFiles(targetId);await api('/api/shares/'+item.id,{method:'PATCH',body:shareSettings()});note.textContent='선택한 공유 설정을 반영했어요. 일정 수정은 이후 자동으로 갱신돼요.';}
             catch(err){error.textContent=message(err);}finally{event.currentTarget.disabled=false;}
           },true),button('공유 취소',async event => {
             event.currentTarget.disabled = true;
@@ -258,6 +264,7 @@
     form.onsubmit = async event => {
       event.preventDefault(); submit.disabled = true; error.textContent = '';
       try {
+        await prepareSharedCovers(targetId);
         await syncNow();
         if(tabChecks.get('materials').checked)await syncShareFiles(targetId);
         const result = await api('/api/shares',{method:'POST',body:{...shareSettings(),password:password.input.value,expiresAt:Math.floor(new Date(expiry.input.value).getTime()/1000)}});

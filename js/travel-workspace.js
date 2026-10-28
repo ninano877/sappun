@@ -169,6 +169,7 @@ function updateExpenseSplitPreview() {
   function stopChoices(selected){return '<div class="resource-stop-choices">'+state.days.flatMap((stops,d)=>stops.map(s=>'<label class="person-chip"><input type="checkbox" name="resource-stop" value="'+esc(s.id)+'" '+(selected.includes(s.id)?'checked':'')+' /><span>Day '+(d+1)+' · '+esc(s.name)+'</span></label>')).join('')+'</div>';}
   const coverObjectUrls=new Map();
   function resourceCoverSource(resource){
+    if(sharedViewMode&&/^data:image\/jpeg;base64,/.test(resource.cover||''))return resource.cover;
     if(resource.coverFileId){const file=workspaceFiles.find(file=>file.id===resource.coverFileId&&file.resourceId===resource.id);if(file?.blob){if(!coverObjectUrls.has(file.id))coverObjectUrls.set(file.id,URL.createObjectURL(file.blob));return coverObjectUrls.get(file.id);}return '';}
     return TravelMedia.web(resource.cover)?.href||'';
   }

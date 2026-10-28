@@ -1594,7 +1594,7 @@ $("#jsonfile").onchange = async (e) => {
   e.target.value = "";
 };
 $(".foot").textContent =
-  "입력한 일정·비용·첨부 파일은 현재 브라우저에 보관됩니다. 지도는 Google Maps를 사용하며, 연결선은 방문 순서를 표시합니다. 교통 시간·금액은 직접 수정할 수 있어요.";
+  "사뿐 v" + version + " · © 2024 사뿐";
 $("#mapsetup").parentElement.querySelector("h2").textContent = "여행 지도";
 save();
 showHome();
@@ -2598,6 +2598,10 @@ async function travelerPhotoData(file) {
     if (!travelerPhotoSource(result)) throw Error('사진을 처리하지 못했어요. 다른 사진을 선택해 주세요.');
     return result;
   } finally { bitmap.close(); }
+}
+async function travelCoverData(file) {
+  const bitmap=await createImageBitmap(file);
+  try{const scale=Math.min(1,800/bitmap.width,500/bitmap.height),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));const context=canvas.getContext('2d');context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(bitmap,0,0,canvas.width,canvas.height);return canvas.toDataURL('image/jpeg',.76);}finally{bitmap.close();}
 }
 function tripSummaryHtml(t, total) {
   const people = Math.max(1, Number(state.settings.people) || 1), status = tripSummaryStatus(t);

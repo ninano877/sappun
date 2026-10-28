@@ -47,6 +47,7 @@ export function shareSnapshot(trip, choices = {}) {
   if(!options.tabs.length)fail(400,'공유할 탭을 하나 이상 선택해 주세요.');
   if(options.tabs.includes('settlement'))options.costs=true;
   const pick=(value,keys)=>Object.fromEntries(keys.filter(key=>value?.[key]!==undefined).map(key=>[key,value[key]]));
+  const cover=source=>/^https?:\/\//i.test(source.cover||'')?text(source.cover,4096):source.coverFileId&&source.sharedCoverId===source.coverFileId&&typeof source.sharedCover==='string'&&source.sharedCover.length<=400000&&/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(source.sharedCover)?source.sharedCover:'';
   const expense=e=>pick(e,['id','name','category','currency','actual','amount','planned','scope','amountBasis','peopleSnapshot','payerId','splitIds','reimbursedIds','allocationConfirmed','settlementStatus','stopIds']);
   const data={version:2,settings:pick(trip.data.settings,['people','travelCurrency','currencyRates','rate']),expenses:options.costs?(trip.data.expenses||[]).map(expense):[]};
   data.settings.budget=options.costs?Number(trip.data.settings.budget)||0:0;
@@ -61,8 +62,8 @@ export function shareSnapshot(trip, choices = {}) {
     return item;
   }));
   data.preparation=options.tabs.includes('preparation')?(trip.data.preparation||[]).map(task=>({...pick(task,['id','title','status','category','emoji','color','checklist']),note:options.notes?text(task.note,1000):''})):[];
-  data.resources=options.tabs.includes('materials')?(trip.data.resources||[]).map(resource=>({...pick(resource,['id','title','category','stopIds']),note:options.notes?text(resource.note,30000):'',references:(resource.references||[]).filter(link=>/^https?:\/\//i.test(link.url)).map(link=>pick(link,['id','url','title','previewMode']))})):[];
-  const planner={...pick(trip,['title','location','start','end','viewMode','workspaceView','mapDisplay']),id:trip.id,data,workspaceTabs:allowedTabs.map(key=>({...pick((trip.workspaceTabs||[]).find(tab=>tab.key===key)||{},['emoji','label']),key,hidden:!options.tabs.includes(key)}))};
+  data.resources=options.tabs.includes('materials')?(trip.data.resources||[]).map(resource=>({...pick(resource,['id','title','category','stopIds']),cover:cover(resource),note:options.notes?text(resource.note,30000):'',references:(resource.references||[]).filter(link=>/^https?:\/\//i.test(link.url)).map(link=>pick(link,['id','url','title','previewMode']))})):[];
+  const planner={...pick(trip,['title','location','start','end','viewMode','workspaceView','mapDisplay']),cover:cover(trip),id:trip.id,data,workspaceTabs:allowedTabs.map(key=>({...pick((trip.workspaceTabs||[]).find(tab=>tab.key===key)||{},['emoji','label']),key,hidden:!options.tabs.includes(key)}))};
   const snapshot = {
     title: text(trip.title, 100), location: text(trip.location, 150), start:trip.start, end:trip.end,
     days: trip.data.days.map(day => day.map(stop => {

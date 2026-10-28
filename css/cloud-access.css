@@ -37,6 +37,21 @@ body.shared-readonly.shared-hide-summary #summary { display:none!important; }
 .shared-file-viewer pre { white-space:pre-wrap; overflow-wrap:anywhere; padding:16px; }
 .shared-file-viewer > p { padding:12px; }
 .shared-file-preview-actions { display:flex; justify-content:flex-end; flex-shrink:0; }
+body.shared-readonly [data-dayadd],body.shared-readonly .schedule-add-row { display:none!important; }
+.shared-stop-detail { margin:8px 0 0 6px; padding:9px 12px; border:1px solid #e5e8eb; background:white; color:#3182f6; border-radius:10px; font-size:12px; }
+body.shared-readonly #place-detail-panel .detail-heading { display:flex; gap:12px; }
+body.shared-readonly #place-detail-panel .detail-heading h2 { min-width:0; flex:1; overflow-wrap:anywhere; }
+body.shared-readonly #place-detail-panel .detail-heading > button { flex-shrink:0; width:auto; min-width:64px; min-height:40px; font-size:13px; white-space:nowrap; padding:8px; }
+.shared-sheet-close { display:block; width:100%; margin:24px 0 8px; padding:14px; border:0; border-radius:12px; background:#f2f4f6; color:#4e5968; font-weight:700; }
+.shared-resource-cover { width:100%; max-height:240px; object-fit:cover; border-radius:12px; margin-bottom:16px; }
+.shared-trip-cover { width:100%; max-height:220px; object-fit:cover; border-radius:18px; grid-column:1 / -1; margin-bottom:16px; }
+@media(max-width:760px){
+  body.shared-readonly #place-detail-panel:not([hidden]) { position:fixed!important; inset:0!important; width:100%!important; height:100dvh!important; max-height:100dvh; box-sizing:border-box; z-index:1100!important; overflow-y:auto!important; border:0; }
+  body.shared-readonly #place-detail-panel .detail-heading { position:sticky; top:0; padding:14px 16px; background:#fff; z-index:2; }
+  body.shared-readonly #place-detail-panel .detail-body { padding:18px 16px max(24px,env(safe-area-inset-bottom)); }
+  body.shared-readonly .mobile-current-tab { display:inline!important; font-size:13px; }
+  .shared-trip-cover { max-height:160px; border-radius:12px; }
+}
 .cloud-share-options { border:1px solid #e5e8eb; border-radius:14px; padding:12px 14px; margin:0; }
 .cloud-share-options legend { padding:0 4px; font-size:14px; font-weight:700; color:#333d4b; }
 .cloud-form .cloud-share-check { display:flex; align-items:center; gap:9px; margin:9px 0; cursor:pointer; }

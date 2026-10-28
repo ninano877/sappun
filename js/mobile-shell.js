@@ -32,7 +32,7 @@
       header.append(menu);
     }
     menu.hidden = false;
-    menu.querySelector('.mobile-current-tab').textContent = media.matches ? nav.querySelector('[aria-pressed="true"]')?.textContent.trim() || '여행 메뉴' : '여행 관리';
+    menu.querySelector('.mobile-current-tab').textContent = sharedViewMode ? '여행 메뉴' : media.matches ? nav.querySelector('[aria-pressed="true"]')?.textContent.trim() || '여행 메뉴' : '여행 관리';
     if (media.matches) menu.querySelector('.mobile-menu-nav').append(nav);
     else navHome.after(nav);
     menu.querySelector('.mobile-menu-tools').append(tools);
