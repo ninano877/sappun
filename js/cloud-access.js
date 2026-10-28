@@ -137,10 +137,10 @@
   }
   window.SappunCloudFiles={upload:async(tripId,ids)=>{if(ready&&ids.length){await syncNow();await syncShareFiles(tripId,ids);}},remove:async id=>{if(ready)await api('/api/attachments/'+encodeURIComponent(id),{method:'DELETE'});}};
   async function syncNow() {
-    clearTimeout(timer);
+    clearTimeout(timer); timer=null;
     if (!ready || paused) throw Error('서버 연결을 확인하거나 일정을 다시 불러와 주세요.');
     if (inFlight) { await inFlight; return syncNow(); }
-    const packed = bookString(); if (packed === lastSaved) return;
+    const packed = bookString(); if (packed === lastSaved) {setStatus('서버에 저장됨');return;}
     setStatus('저장 중…');
     inFlight = api('/api/book',{method:'PUT',body:{book:JSON.parse(packed),revision}})
       .then(result => {revision = result.revision; lastSaved = packed; setStatus('서버에 저장됨');})
@@ -155,8 +155,11 @@
   }
   function queueSync() {
     if (!ready || paused) return;
-    setStatus('변경 내용 저장 대기…'); clearTimeout(timer);
-    timer = setTimeout(() => syncNow().catch(() => {}), 1200);
+    if (inFlight) return; // The active save drains any changes made during its request.
+    if (bookString() === lastSaved) {clearTimeout(timer);timer=null;setStatus('서버에 저장됨');return;}
+    setStatus('변경 내용 저장 대기…');
+    if (timer) return; // Repeated render/save calls must not postpone the pending write.
+    timer = setTimeout(() => {timer=null;syncNow().catch(() => {});}, 1200);
   }
   function dialog(title) {
     const node = el('dialog','cloud-dialog');
