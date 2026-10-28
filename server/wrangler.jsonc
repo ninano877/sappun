@@ -1,0 +1,30 @@
+{
+  "name": "sappun-api",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "vars": {
+    "APP_ORIGIN": "https://ninano877.github.io"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sappun",
+      "database_id": "de167fee-77f6-48ec-8deb-1310d6cc33b8"
+    }
+  ],
+  "secrets": {
+    "required": [
+      "OWNER_USERNAME",
+      "OWNER_PASSWORD_HASH"
+    ]
+  },
+  "observability": {
+    "enabled": false
+  },
+  "triggers": {
+    "crons": [
+      "0 3 * * *"
+    ]
+  }
+}

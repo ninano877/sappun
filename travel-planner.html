@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>사뿐 · 여행 플래너</title>
+    <link rel="stylesheet" href="css/travel-planner.css" />
+    <link rel="stylesheet" href="css/cloud-access.css" />
+  </head>
+
+  <body class="auth-pending">
+    <div id="cloud-gate" aria-live="polite"></div>
+    <header>
+      <div class="brand">
+        사뿐<span style="color: #90b4ff">.</span><small>우리의 여행을 한눈에</small>
+      </div>
+      <div class="tools">
+        <button id="settings">⚙ 여행 설정</button><button id="backup">↓ 백업</button
+        ><button id="restore">↑ 불러오기</button>
+      </div>
+    </header>
+    <div class="wrap">
+      <section class="hero">
+        <div>
+          <div class="eyebrow"></div>
+          <h1></h1>
+          <p class="muted"></p>
+        </div>
+        <div class="tripbadge"></div>
+      </section>
+      <section class="summary" id="summary"></section>
+      <nav class="tabs" id="days" aria-label="여행 날짜"></nav>
+      <div class="layout">
+        <section class="panel">
+          <div class="panelhead">
+            <div>
+              <small id="daylabel"></small>
+              <h2 id="daytitle"></h2>
+            </div>
+          </div>
+          <div class="filters" id="filters"></div>
+          <div class="stops" id="stops"></div>
+        </section>
+        <aside class="mapcolumn">
+          <section class="panel">
+            <div class="panelhead">
+              <div>
+                <small>GOOGLE MAPS</small>
+                <h2>오늘의 여행 동선</h2>
+              </div>
+              <button id="mapsetup">지도 연결</button>
+            </div>
+            <div class="mapstage">
+              <iframe
+                id="embed"
+                title="선택 장소 Google 지도"
+                referrerpolicy="no-referrer-when-downgrade"
+              ></iframe>
+              <div id="gmap" hidden></div>
+            </div>
+            <div class="mapfooter">
+              <div class="mapstrip" id="mapstrip"></div>
+            </div>
+          </section>
+          <section class="panel below">
+            <div class="panelhead">
+              <div>
+                <small>TRIP BUDGET</small>
+                <h2>여행 예산</h2>
+              </div>
+              <button id="expenseadd">＋ 공통 비용</button>
+            </div>
+            <div class="budgetbody" id="budget"></div>
+          </section>
+          <section class="panel below">
+            <div class="panelhead">
+              <div>
+                <small>TRAVEL DOCUMENTS</small>
+                <h2>예약서 · 여행 파일</h2>
+              </div>
+              <button id="upload">자료실에서 관리</button>
+            </div>
+            <div class="filesbody">
+              <p class="note">현재 선택 날짜에 첨부 · 이 브라우저에 보관</p>
+              <div id="files"></div>
+            </div>
+          </section>
+        </aside>
+      </div>
+      <footer class="foot">
+        일정과 첨부 파일은 현재 브라우저에 저장됩니다. 합계에는 입력한 실제 지출만
+        반영합니다. 계정 로그인 후 일정은 서버에 저장하고, 첨부파일은 이 기기에 보관해요.
+      </footer>
+    </div>
+    <input type="file" id="uploads" multiple hidden /><input
+      type="file"
+      id="jsonfile"
+      accept=".json,application/json"
+      hidden
+    />
+    <dialog id="modal">
+      <button type="button" id="modal-close" class="modal-close" aria-label="닫기" hidden>
+        ×
+      </button>
+      <form id="form">
+        <div id="formbody"></div>
+        <div class="dialogactions">
+          <button type="button" id="cancel">취소</button
+          ><button class="primary" type="submit">저장하기</button>
+        </div>
+      </form>
+    </dialog>
+    <div id="toast" class="toast" hidden role="status"></div>
+    <script src="js/app-config.js"></script>
+    <script src="js/cloud-config.js"></script>
+    <script src="js/travel-components.js"></script>
+    <script src="js/currency-picker.js"></script>
+    <script src="js/exchange-rates.js"></script>
+    <script src="js/travel-finance.js"></script>
+    <script src="js/travel-media.js"></script>
+    <script src="js/travel-planner.js"></script>
+    <script src="js/travel-workspace.js"></script>
+    <script src="js/mobile-itinerary.js"></script>
+    <script src="js/mobile-shell.js"></script>
+    <script src="js/mobile-day-picker.js"></script>
+    <script src="js/cloud-access.js"></script>
+  </body>
+</html>

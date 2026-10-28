@@ -1,0 +1,192 @@
+// Single-owner planner. No registration endpoint and no public trip listing.
+const encoder = new TextEncoder();
+const SESSION_SECONDS = 12 * 3600;
+const MAX_BYTES = 2 * 1024 * 1024;
+const MAX_SHARES = 30;
+export const hex = bytes => [...new Uint8Array(bytes)].map(n => n.toString(16).padStart(2, '0')).join('');
+export const randomToken = () => hex(crypto.getRandomValues(new Uint8Array(32)));
+export async function digest(value) { return hex(await crypto.subtle.digest('SHA-256', encoder.encode(value))); }
+export async function passwordHash(password, salt = randomToken(), iterations = 100000) {
+  const key = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({name:'PBKDF2', hash:'SHA-256', salt:encoder.encode(salt), iterations}, key, 256);
+  return `pbkdf2$${iterations}$${salt}$${hex(bits)}`;
+}
+function equal(a, b) {
+  let mismatch = a.length ^ b.length;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) mismatch |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  return mismatch === 0;
+}
+export async function verifyPassword(password, stored) {
+  const [kind, iterations, salt, hash] = String(stored || '').split('$');
+  if (kind !== 'pbkdf2' || !salt || !hash || Number(iterations) !== 100000) return false;
+  return equal(await passwordHash(password, salt, Number(iterations)), stored);
+}
+function fail(status, message) { throw Object.assign(new Error(message), {status}); }
+function text(value, max = 1000) { return typeof value === 'string' ? value.slice(0, max) : ''; }
+export function sanitize(value) {
+  return JSON.parse(JSON.stringify(value, (key, item) =>
+    /^(?:key|api[_-]?key|access[_-]?token|secret|password|authorization)$/i.test(key) ? '' : item));
+}
+export function validateBook(book) {
+  if (!book || !Array.isArray(book.trips) || book.trips.length > 100) fail(400, '여행 데이터 형식을 확인해 주세요.');
+  const ids = new Set();
+  for (const trip of book.trips) {
+    if (typeof trip.id !== 'string' || ids.has(trip.id) || !trip.data?.settings ||
+        !Array.isArray(trip.data.days) || !trip.data.days.length || trip.data.days.length > 90 ||
+        !trip.data.days.every(day => Array.isArray(day) && day.length <= 500 && day.every(s => s && typeof s === 'object')) ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(trip.start) || !/^\d{4}-\d{2}-\d{2}$/.test(trip.end)) fail(400, '여행 데이터 형식을 확인해 주세요.');
+    ids.add(trip.id);
+  }
+  return sanitize(book);
+}
+// Explicit public fields: no expense details, members, files, source URLs or private notes.
+export function shareSnapshot(trip) {
+  const stops = trip.data.days.flat();
+  return {
+    title: text(trip.title, 100), location: text(trip.location, 150), start:trip.start, end:trip.end,
+    days: trip.data.days.map(day => day.map(stop => {
+      const lodging = stop.lodgingStopId ? stops.find(item => item.id === stop.lodgingStopId && item.category === '숙소' && !item.lodgingStopId) : null;
+      const source = lodging || stop;
+      const point = source.placeQuery === source.query ? source.chosenPlace : null;
+      return {
+        name: text(stop.name, 300), category:text(stop.category, 80),
+        startTime:stop.timeUnset ? '' : text(stop.startTime || stop.time, 5), endTime:stop.timeUnset ? '' : text(stop.endTime, 5),
+        endDate:text(stop.endDate, 10),
+        point: point && Number.isFinite(point.lat) && Number.isFinite(point.lng) && Math.abs(point.lat) <= 90 && Math.abs(point.lng) <= 180 ? {lat:point.lat, lng:point.lng} : null
+      };
+    }))
+  };
+}
+async function body(request) {
+  if (Number(request.headers.get('Content-Length')) > MAX_BYTES) fail(413, '저장할 데이터가 너무 커요. 첨부파일은 제외해 주세요.');
+  const reader = request.body?.getReader();
+  if (!reader) fail(400, '요청 내용을 확인해 주세요.');
+  const chunks = []; let size = 0;
+  while (true) {
+    const {value, done} = await reader.read(); if (done) break;
+    size += value.byteLength;
+    if (size > MAX_BYTES) { await reader.cancel(); fail(413, '저장할 데이터가 너무 커요.'); }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size); let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+  try { return JSON.parse(new TextDecoder().decode(bytes)); } catch { fail(400, '요청 내용을 확인해 주세요.'); }
+}
+async function throttle(env, key, now) {
+  const bucket = `${await digest(key)}:${Math.floor(now / 900)}`;
+  const row = await env.DB.prepare('INSERT INTO attempts(bucket,count,expires_at) VALUES (?,1,?) ON CONFLICT(bucket) DO UPDATE SET count=count+1 RETURNING count').bind(bucket, now + 1800).first();
+  if (row.count > 10) fail(429, '여러 번 시도했어요. 15분 뒤 다시 입력해 주세요.');
+}
+async function bearer(request) {
+  const token = request.headers.get('Authorization')?.match(/^Bearer ([a-f0-9]{64})$/)?.[1];
+  if (!token) fail(401, '로그인이 필요해요.');
+  return digest(token);
+}
+async function owner(request, env, now) {
+  const hash = await bearer(request);
+  const session = await env.DB.prepare('SELECT expires_at FROM sessions WHERE token_hash=?').bind(hash).first();
+  if (!session || session.expires_at <= now) fail(401, '로그인 시간이 지났어요. 다시 로그인해 주세요.');
+  return hash;
+}
+async function liveShare(env, id, now) {
+  if (!/^[a-f0-9]{64}$/.test(id)) fail(404, '공유 링크를 확인해 주세요.');
+  const share = await env.DB.prepare('SELECT * FROM shares WHERE id=?').bind(id).first();
+  if (!share || share.revoked || share.expires_at <= now) fail(410, '공유가 종료되었거나 만료되었어요.');
+  return share;
+}
+async function route(request, env, now) {
+  const path = new URL(request.url).pathname;
+  const method = request.method;
+  if (path === '/api/login' && method === 'POST') {
+    await throttle(env, `login:${request.headers.get('CF-Connecting-IP') || 'unknown'}`, now);
+    const input = await body(request);
+    if (typeof input.password !== 'string' || input.password.length > 256 ||
+        !await verifyPassword(input.password, env.OWNER_PASSWORD_HASH) || !equal(text(input.username, 100), env.OWNER_USERNAME)) fail(401, '아이디 또는 비밀번호를 확인해 주세요.');
+    const token = randomToken();
+    await env.DB.prepare('INSERT INTO sessions(token_hash,expires_at) VALUES (?,?)').bind(await digest(token), now + SESSION_SECONDS).run();
+    return {token};
+  }
+  const shared = path.match(/^\/api\/shared\/([a-f0-9]+)(\/unlock)?$/);
+  if (shared) {
+    const [, id, unlock] = shared;
+    if (unlock && method === 'POST') {
+      await throttle(env, `share:${id}:${request.headers.get('CF-Connecting-IP') || 'unknown'}`, now);
+      const share = await liveShare(env, id, now), input = await body(request);
+      if (typeof input.password !== 'string' || input.password.length > 256 || !await verifyPassword(input.password, share.password_hash)) fail(401, '비밀번호를 확인해 주세요.');
+      const token = randomToken();
+      await env.DB.prepare('INSERT INTO share_sessions(token_hash,share_id,expires_at) VALUES (?,?,?)').bind(await digest(token), id, Math.min(share.expires_at, now + 3600)).run();
+      return {token};
+    }
+    if (!unlock && method === 'GET') {
+      const hash = await bearer(request);
+      const session = await env.DB.prepare('SELECT * FROM share_sessions WHERE token_hash=? AND share_id=?').bind(hash, id).first();
+      if (!session || session.expires_at <= now) fail(401, '비밀번호를 다시 입력해 주세요.');
+      const share = await liveShare(env, id, now);
+      return {trip:JSON.parse(share.payload), expiresAt:share.expires_at, mapKey:env.MAPS_BROWSER_KEY || ''};
+    }
+    fail(405, '읽기만 가능한 공유예요.');
+  }
+  const tokenHash = await owner(request, env, now);
+  if (path === '/api/logout' && method === 'POST') {
+    await env.DB.prepare('DELETE FROM sessions WHERE token_hash=?').bind(tokenHash).run(); return {ok:true};
+  }
+  if (path === '/api/book' && method === 'GET') {
+    const book = await env.DB.prepare('SELECT * FROM books WHERE id=1').first();
+    return {book:book ? JSON.parse(book.payload) : null, revision:book?.revision || 0, mapKey:env.MAPS_BROWSER_KEY || ''};
+  }
+  if (path === '/api/book' && method === 'PUT') {
+    const input = await body(request), book = validateBook(input.book);
+    if (!Number.isInteger(input.revision) || input.revision < 0) fail(400, '저장 버전을 확인해 주세요.');
+    // Atomic compare-and-swap prevents two tabs or devices silently overwriting a newer book.
+    const result = input.revision === 0
+      ? await env.DB.prepare('INSERT OR IGNORE INTO books(id,payload,revision) VALUES (1,?,1)').bind(JSON.stringify(book)).run()
+      : await env.DB.prepare('UPDATE books SET payload=?,revision=revision+1 WHERE id=1 AND revision=?').bind(JSON.stringify(book), input.revision).run();
+    if (result.meta.changes !== 1) fail(409, '다른 화면에서 수정했어요. 서버 일정을 다시 불러와 주세요.');
+    return {revision:input.revision + 1};
+  }
+  if (path === '/api/shares' && method === 'GET') {
+    const result = await env.DB.prepare('SELECT id,title,expires_at,revoked,created_at FROM shares ORDER BY created_at DESC').all(); return {shares:result.results};
+  }
+  if (path === '/api/shares' && method === 'POST') {
+    const input = await body(request);
+    if (typeof input.password !== 'string' || input.password.length < 8 || input.password.length > 128) fail(400, '공유 비밀번호는 8~128자로 입력해 주세요.');
+    if (!Number.isInteger(input.expiresAt) || input.expiresAt <= now || input.expiresAt > now + 90*86400) fail(400, '만료일은 현재부터 90일 이내로 정해 주세요.');
+    const count = await env.DB.prepare('SELECT count(*) AS n FROM shares WHERE revoked=0 AND expires_at>?').bind(now).first();
+    if (count.n >= MAX_SHARES) fail(400, '활성 공유는 최대 30개예요. 이전 공유를 취소해 주세요.');
+    const saved = await env.DB.prepare('SELECT payload FROM books WHERE id=1').first();
+    const trip = saved && JSON.parse(saved.payload).trips.find(t => t.id === input.tripId);
+    if (!trip) fail(404, '여행을 먼저 서버에 저장해 주세요.');
+    const snapshot = shareSnapshot(trip), id = randomToken();
+    await env.DB.prepare('INSERT INTO shares(id,title,payload,password_hash,expires_at,created_at) VALUES (?,?,?,?,?,?)').bind(id, snapshot.title, JSON.stringify(snapshot), await passwordHash(input.password), input.expiresAt, now).run();
+    return {id};
+  }
+  const revoke = path.match(/^\/api\/shares\/([a-f0-9]{64})$/);
+  if (revoke && method === 'DELETE') {
+    await env.DB.batch([
+      env.DB.prepare('UPDATE shares SET revoked=1,payload=? WHERE id=?').bind('{}', revoke[1]),
+      env.DB.prepare('DELETE FROM share_sessions WHERE share_id=?').bind(revoke[1])
+    ]); return {ok:true};
+  }
+  fail(404, '요청한 기능이 없어요.');
+}
+export default {
+  async fetch(request, env, context) {
+    const origin = request.headers.get('Origin');
+    const headers = {'Content-Type':'application/json; charset=utf-8', 'Cache-Control':'no-store', 'Vary':'Origin', 'X-Content-Type-Options':'nosniff'};
+    if (origin === env.APP_ORIGIN) Object.assign(headers, {'Access-Control-Allow-Origin':origin, 'Access-Control-Allow-Methods':'GET,POST,PUT,DELETE,OPTIONS', 'Access-Control-Allow-Headers':'Content-Type,Authorization', 'Access-Control-Max-Age':'600'});
+    if (!env.APP_ORIGIN || !env.DB || !env.OWNER_PASSWORD_HASH || !env.OWNER_USERNAME) return new Response(JSON.stringify({error:'서버 설정을 완료해 주세요.'}), {status:503, headers});
+    if (origin !== env.APP_ORIGIN) return new Response(JSON.stringify({error:'허용되지 않은 접속 주소예요.'}), {status:403, headers});
+    if (request.method === 'OPTIONS') return new Response(null, {status:204, headers});
+    try { return new Response(JSON.stringify(await route(request, env, Math.floor(Date.now()/1000))), {headers}); }
+    catch (error) { return new Response(JSON.stringify({error:error.status ? error.message : '서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.'}), {status:error.status || 500, headers}); }
+  },
+  async scheduled(event, env) {
+    const now = Math.floor(Date.now()/1000);
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM sessions WHERE expires_at<=?').bind(now),
+      env.DB.prepare('DELETE FROM share_sessions WHERE expires_at<=?').bind(now),
+      env.DB.prepare('DELETE FROM attempts WHERE expires_at<=?').bind(now),
+      env.DB.prepare('DELETE FROM shares WHERE expires_at<=? OR revoked=1').bind(now)
+    ]);
+  }
+};
