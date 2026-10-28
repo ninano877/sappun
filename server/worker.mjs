@@ -216,6 +216,7 @@ async function route(request, env, now) {
       const mapKey=snapshot.options?.map===false?'':(cipher?await decryptMapKey(cipher,env):env.MAPS_BROWSER_KEY||'');
       const files=snapshot.options?.tabs.includes('materials')&&snapshot.options.files!==false?(await env.DB.prepare('SELECT id,resource_id,stop_id,name,mime,size,updated_at FROM attachments WHERE trip_id=?').bind(snapshot.planner.id).all()).results:[];
       snapshot.updatedAt=String(snapshot.updatedAt)+':'+files.map(file=>file.id+'-'+file.updated_at).join(',');
+      if(new URL(request.url).searchParams.get('version')===snapshot.updatedAt)return {unchanged:true,expiresAt:share.expires_at};
       return {trip:snapshot, expiresAt:share.expires_at, mapKey,files};
     }
     fail(405, '읽기만 가능한 공유예요.');

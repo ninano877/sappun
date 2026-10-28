@@ -8,7 +8,7 @@ const output = join(root, 'dist');
 const html = await readFile(join(root, 'travel-planner.html'), 'utf8');
 const files = new Set(['index.html', 'travel-planner.html']);
 for (const match of html.matchAll(/(?:src|href)="([^"#]+)"/g)) {
-  const path = match[1];
+  const path = match[1].split('?')[0];
   if (/^https?:\/\//.test(path)) continue;
   if (path.includes('..') || path.startsWith('/') || path.includes('.private.') || !/^(css|js|data|assets)\//.test(path)) throw Error('Unexpected publish path: ' + path);
   if (path.startsWith('data/')) throw Error('Publish data must not include a personal itinerary: '+path);
@@ -24,11 +24,14 @@ for (const path of files) {
 }
 // Changed assets get a new URL so a normal refresh cannot reuse an older editor.
 let publishedHtml=html;
+const versions=new Map();
 for(const path of files) {
   if(!/\.(?:js|css)$/.test(path))continue;
   const hash=createHash('sha256').update(await readFile(join(output,path))).digest('hex').slice(0,12);
-  publishedHtml=publishedHtml.replaceAll('"'+path+'"','"'+path+'?v='+hash+'"');
+  versions.set(path,hash);
 }
+publishedHtml=publishedHtml.replace(/((?:src|href)=)"([^"#]+)"/g,(full,attribute,path)=>{const clean=path.split('?')[0],hash=versions.get(clean);return hash?attribute+'"'+clean+'?v='+hash+'"':full;});
+await writeFile(join(root,'travel-planner.html'),publishedHtml);
 await writeFile(join(output,'travel-planner.html'),publishedHtml);
 await writeFile(join(output,'.nojekyll'),'');
 files.add('.nojekyll');

@@ -291,6 +291,7 @@
   }
   async function showShared(shareToken) {
     let payload = await api('/api/shared/'+shareId,{auth:shareToken});
+    const refreshEvery=24*60*60*1000;
     if(payload.trip.planner){
       window.SappunSharedFiles={files:payload.files||[],open:async(file,mode)=>{
         let panel=null,viewer=null,download=null,url='';
@@ -320,11 +321,15 @@
         }catch(error){if(viewer)viewer.textContent=message(error);else toast(message(error));}
       }};
       SappunSharedPlanner.open(payload,shareId);
-      const poll=setInterval(async()=>{
-        if(document.hidden)return;
-        try{const updated=await api('/api/shared/'+shareId,{auth:shareToken});if(updated.trip.updatedAt!==payload.trip.updatedAt){payload=updated;window.SappunSharedFiles.files=updated.files||[];SappunSharedPlanner.open(updated,shareId,true);}}
+      let lastChecked=Date.now();
+      const refreshShared=async(force=false)=>{
+        if(!force&&(document.hidden||Date.now()-lastChecked<refreshEvery))return;
+        try{const updated=await api('/api/shared/'+shareId+'?version='+encodeURIComponent(payload.trip.updatedAt),{auth:shareToken});lastChecked=Date.now();if(!updated.unchanged&&updated.trip.updatedAt!==payload.trip.updatedAt){payload=updated;window.SappunSharedFiles.files=updated.files||[];SappunSharedPlanner.open(updated,shareId,true);}if(force)toast(updated.unchanged?'이미 최신 일정이에요.':'최신 일정을 불러왔어요.');}
         catch(err){clearInterval(poll);SappunSharedPlanner.close();sharedLogin(message(err));}
-      },30000);
+      };
+      const poll=setInterval(()=>refreshShared(),refreshEvery);
+      const refreshButton=button('새로 불러오기',()=>refreshShared(true),true);refreshButton.dataset.sharedRefresh='';refreshButton.className='shared-refresh-button';document.querySelector('body > header').append(refreshButton);
+      document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshShared();});
       setTimeout(()=>{clearInterval(poll);SappunSharedPlanner.close();sharedLogin('공유가 만료되었어요.');},Math.max(0,payload.expiresAt*1000-Date.now()));
       return;
     }
@@ -402,14 +407,17 @@
       clearInterval(poll); stopsObserver?.disconnect(); markers.forEach(marker => {marker.object.map=null;}); markers = []; payload = null;
       document.querySelectorAll('.cloud-dialog').forEach(node => node.remove()); sharedLogin(text);
     }
+    let lastChecked=Date.now();
     async function revalidate() {
+      if(Date.now()-lastChecked<refreshEvery)return;
       try {
         const refreshed = await api('/api/shared/'+shareId,{auth:shareToken});
+        lastChecked=Date.now();
         if (refreshed.expiresAt*1000 <= Date.now()) closeShared('공유가 만료되었어요.');
         else status.textContent = '공유 만료: '+new Date(refreshed.expiresAt*1000).toLocaleString('ko-KR');
       } catch(err) {closeShared(message(err));}
     }
-    poll = setInterval(revalidate,30000); // An already-open view also notices revocation.
+    poll = setInterval(revalidate,refreshEvery);
     document.addEventListener('visibilitychange',function visible() {
       if (!payload) {document.removeEventListener('visibilitychange',visible); return;}
       if (!document.hidden) revalidate();

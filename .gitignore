@@ -28,3 +28,6 @@ sappun-*.json
 .dev.vars.*
 .wrangler/
 node_modules/
+/tests/
+/README.md
+/.github/

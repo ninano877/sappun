@@ -55,6 +55,7 @@ const SappunSharedPlanner = (() => {
       if(!document.body.classList.contains('shared-readonly'))return;
       const target=event.target;
       if(target.closest('#shared-file-preview'))return;
+      if(target.closest('[data-shared-refresh]'))return;
       const stopDetail=target.closest('[data-shared-stop-detail]');if(stopDetail){event.preventDefault();event.stopImmediatePropagation();day=Number(stopDetail.closest('[data-group-day]').dataset.groupDay);detail(Number(stopDetail.dataset.sharedStopDetail));return;}
       const file=target.closest('[data-shared-file]');if(file){event.preventDefault();event.stopImmediatePropagation();const record=window.SappunSharedFiles?.files.find(item=>item.id===file.dataset.sharedFile);if(record)window.SappunSharedFiles.open(record,file.dataset.sharedFileMode);return;}
       const preview=target.closest('[data-media-mode]');if(preview){event.preventDefault();event.stopImmediatePropagation();const show=preview.dataset.mediaMode==='preview';preview.closest('figure').querySelectorAll('.restored-link-preview,img,video,audio,object').forEach(node=>node.style.display=show?'':'none');preview.dataset.mediaMode=show?'mention':'preview';preview.textContent=show?'미리보기 접기':'미리보기 보기';return;}
