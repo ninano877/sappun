@@ -428,6 +428,21 @@ function clockAdd(time, minutes) {
   );
 }
 
+function rememberRouteDistance(d,i,result) {
+  const a=state.days[d]?.[i],b=state.days[d]?.[i+1];
+  if(!a||!b||result?.status!=='ok'||!Number.isFinite(result.distance))return;
+  a.routeDistance={nextId:b.id,mode:a.mode,fromQuery:linkedLodging(a).query||'',toQuery:linkedLodging(b).query||'',meters:result.distance};
+}
+function savedRouteDistance(a,b) {
+  const r=a.routeDistance;
+  return r&&r.nextId===b?.id&&r.mode===a.mode&&r.fromQuery===(linkedLodging(a).query||'')&&r.toQuery===(linkedLodging(b).query||'')&&Number.isFinite(r.meters)?r.meters:0;
+}
+function googlePlaceUrl(stop) {
+  const point=savedPoint(stop);
+  for(const value of [point?.url,stop.mapsUrl]){try{const url=new URL(value);if(url.protocol==='https:'&&(/(^|\.)google\.[a-z.]+$/.test(url.hostname)||url.hostname==='maps.app.goo.gl'))return url.href;}catch{}}
+  const query=point&&Number.isFinite(point.lat)&&Number.isFinite(point.lng)?point.lat+','+point.lng:stop.query||stop.name;
+  return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(query);
+}
 function currentRoute(d, i) {
   let x = routeResults.get(routeSignature(d, i));
   return x && Date.now() - x.fetched < 600000 ? x : null;
@@ -644,7 +659,7 @@ async function getLeg(d, i, force = false, geometryOnly = false) {
   let job = (async () => {
     try {
       const result = await lookupSegmentRoute(d, a, b, mode);
-      if (key === state.settings.key) routeResults.set(sig, result);
+      if (key === state.settings.key&&state.days[d]?.[i]===a&&state.days[d]?.[i+1]===b&&sig===routeSignature(d,i)){routeResults.set(sig,result);rememberRouteDistance(d,i,result);save();}
     } catch (e) {
       if (key === state.settings.key)
         routeResults.set(sig, {
@@ -2388,8 +2403,9 @@ function segmentBlock(d, i) {
   if (!next) return "";
   const entered = hasSegment(s), route = currentRoute(d, i);
   const minutes = entered ? (s.minutes ?? (route?.status === "ok" ? route.minutes : null)) : null;
-  const distance = entered && route?.status === "ok" && route.distance > 0
-    ? (route.distance < 1000 ? Math.round(route.distance) + "m" : (route.distance / 1000).toLocaleString("ko-KR", {maximumFractionDigits: 1}) + "km") : "";
+  const meters=route?.status==='ok'?route.distance:savedRouteDistance(s,next);
+  const distance = entered && meters > 0
+    ? (meters < 1000 ? Math.round(meters) + "m" : (meters / 1000).toLocaleString("ko-KR", {maximumFractionDigits: 1}) + "km") : "";
   const summary = entered ? [s.mode, minutes !== null ? minutes + "분" : "", distance].filter(Boolean).join(" · ") : "이동 추가";
   if (sharedViewMode) {
     if (!entered) return "";
@@ -2932,7 +2948,7 @@ async function refreshGoogleSegments(indices){
     const signature=routeSignature(d,i),mode=stop.mode;
     try{const result=await lookupSegmentRoute(d,stop,next,mode,{departureBasis:stop.googleRouteDepartureBasis||'schedule'});
       if(tripId!==currentTripId||state.days[d][i]!==stop||state.days[d][i+1]!==next||stop.mode!==mode||signature!==routeSignature(d,i)||(stop.manualRoute&&Number.isFinite(stop.minutes)))continue;
-      routeResults.set(signature,result);stop.minutes=result.minutes;stop.manualRoute=false;stop.googleRouteRequested=true;syncFollowingSchedule(d,i,result.minutes);refreshed++;
+      routeResults.set(signature,result);rememberRouteDistance(d,i,result);stop.minutes=result.minutes;stop.manualRoute=false;stop.googleRouteRequested=true;syncFollowingSchedule(d,i,result.minutes);refreshed++;
     }catch(error){failed++;}
   }}return {refreshed,failed};
 }
@@ -3006,7 +3022,7 @@ function leg(i) {
       const useGoogle = !s.noTravel && appliedRoute?.mode === mode && appliedRoute.result.minutes === minutes;
       s.manualRoute = !useGoogle;s.googleRouteRequested=useGoogle;if(useGoogle)s.googleRouteDepartureBasis=appliedRoute.result.departureBasis||"schedule";
       if (!s.noTravel && minutes !== null) syncFollowingSchedule(d, i, minutes);
-      if (useGoogle) routeResults.set(routeSignature(d, i), appliedRoute.result);
+      if (useGoogle) {routeResults.set(routeSignature(d, i), appliedRoute.result);rememberRouteDistance(d,i,appliedRoute.result);}
       // Manual time/fare entry never triggers a location or route lookup.
       allMapSignature = "";
     },
@@ -3184,7 +3200,7 @@ ${select("장소 분류", "detailcategory", categories, s.category)}${lodgingLin
           "주소 · 지도 검색어",
           "detailquery",
           s.query,
-         )}</section><label
+         )}<a class="place-google-link" href="${esc(googlePlaceUrl(s))}" target="_blank" rel="noopener noreferrer">Google 지도에서 열기 ↗</a></section><label
           >메모<textarea id="detail-note" maxlength="1000">${esc(s.note || "")}</textarea
           ></label
         >

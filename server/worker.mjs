@@ -56,6 +56,7 @@ export function shareSnapshot(trip, choices = {}) {
     const item=pick(stop,['id','name','category','time','startTime','endTime','timeUnset','startDate','endDate','stay','mode','minutes','segmentEnabled','manualRoute','lodgingStopId']);
     item.query=options.map?text(stop.query,1000):'';item.note=options.notes?text(stop.note,1000):'';
     item.currency=stop.currency||data.settings.travelCurrency||'KRW';item.amount=options.costs?(stop.amount??null):null;item.fare=options.costs?(stop.fare??null):null;
+    if(options.map&&stop.routeDistance)item.routeDistance=pick(stop.routeDistance,['nextId','mode','fromQuery','toQuery','meters']);
     if(options.map){item.mapsUrl=text(stop.mapsUrl,4096);if(stop.placeQuery===stop.query&&Number.isFinite(stop.chosenPlace?.lat)&&Number.isFinite(stop.chosenPlace?.lng)){item.chosenPlace=pick(stop.chosenPlace,['id','lat','lng','name','address','url']);item.placeQuery=item.query;}}
     item.costItems=options.costs?(stop.costItems||[]).map(expense):[];
     if(options.costs){Object.assign(item,pick(stop,['actualFare','actualFareCurrency','fareCurrency']));if(stop.farePayment)item.farePayment=expense(stop.farePayment);}

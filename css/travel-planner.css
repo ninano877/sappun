@@ -5673,3 +5673,5 @@ dialog.cloud-dialog::-webkit-scrollbar-thumb,dialog#attachment-preview-dialog::-
 
 .lodging-link-field[hidden] { display:none!important; }
 #stops .map-stop-card.is-map-following { border-color:#B8D4FC!important; }
+
+.place-google-link { display:inline-flex; align-items:center; padding:10px 14px; margin:10px 8px 10px 0; border:1px solid #e5e8eb; border-radius:10px; color:#3182f6; background:#fff; font-size:13px; font-weight:600; text-decoration:none; }
