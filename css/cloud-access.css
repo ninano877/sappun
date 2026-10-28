@@ -12,6 +12,12 @@ body.auth-pending > :not(#cloud-gate):not(script):not(link):not(.cloud-dialog) {
 .cloud-form label { display:grid; gap:7px; font-size:14px; color:#4e5968; }
 .cloud-form input { width:100%; box-sizing:border-box; min-height:48px; border:1px solid #dfe4eb; background:#fff; border-radius:12px; padding:12px; font:inherit; }
 .cloud-form input:focus { outline:2px solid #3182f6; outline-offset:1px; }
+.cloud-password-field { position:relative; display:flex; align-items:center; width:100%; }
+.cloud-password-field input { width:100%; box-sizing:border-box; padding-right:48px!important; }
+.cloud-password-field .cloud-password-eye { position:absolute; right:6px; top:50%; transform:translateY(-50%); display:grid; place-items:center; width:36px; height:36px; min-height:36px; padding:0; border:0; border-radius:9px; background:transparent; color:#8b95a1; cursor:pointer; }
+.cloud-password-field .cloud-password-eye:hover { background:#f2f4f6; color:#4e5968; }
+.cloud-saved-password { display:grid; gap:6px; margin:12px 0; font-size:13px; color:#6b7684; }
+.cloud-saved-password input,.cloud-password-reset input { min-height:44px; border:1px solid #e5e8eb; border-radius:10px; padding:10px 12px; background:#f9fafb; font:inherit; }
 .cloud-share-options { border:1px solid #e5e8eb; border-radius:14px; padding:12px 14px; margin:0; }
 .cloud-share-options legend { padding:0 4px; font-size:14px; font-weight:700; color:#333d4b; }
 .cloud-form .cloud-share-check { display:flex; align-items:center; gap:9px; margin:9px 0; cursor:pointer; }

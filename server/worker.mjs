@@ -182,7 +182,7 @@ async function route(request, env, now) {
       const session = await env.DB.prepare('SELECT * FROM share_sessions WHERE token_hash=? AND share_id=?').bind(hash, id).first();
       if (!session || session.expires_at <= now) fail(401, '비밀번호를 다시 입력해 주세요.');
       const share = await liveShare(env, id, now);
-      const snapshot=JSON.parse(share.payload),cipher=snapshot._mapCipher;delete snapshot._mapCipher;
+      const snapshot=JSON.parse(share.payload),cipher=snapshot._mapCipher;delete snapshot._mapCipher;delete snapshot._passwordCipher;
       const mapKey=snapshot.options?.map===false?'':(cipher?await decryptMapKey(cipher,env):env.MAPS_BROWSER_KEY||'');
       return {trip:snapshot, expiresAt:share.expires_at, mapKey};
     }
@@ -207,7 +207,7 @@ async function route(request, env, now) {
     return {revision:input.revision + 1};
   }
   if (path === '/api/shares' && method === 'GET') {
-    const result = await env.DB.prepare('SELECT id,title,expires_at,revoked,created_at,payload FROM shares ORDER BY created_at DESC').all(); return {shares:result.results.map(row=>{const snapshot=JSON.parse(row.payload);const {payload,...item}=row;return {...item,tripId:snapshot.planner?.id,options:snapshot.options};})};
+    const result = await env.DB.prepare('SELECT id,title,expires_at,revoked,created_at,payload FROM shares WHERE revoked=0 AND expires_at>? ORDER BY created_at DESC').bind(now).all(); return {shares:result.results.map(row=>{const snapshot=JSON.parse(row.payload);const {payload,...item}=row;return {...item,tripId:snapshot.planner?.id,options:snapshot.options,hasPassword:!!snapshot._passwordCipher};})};
   }
   if (path === '/api/shares' && method === 'POST') {
     const input = await body(request);
@@ -220,23 +220,37 @@ async function route(request, env, now) {
     if (!trip) fail(404, '여행을 먼저 서버에 저장해 주세요.');
     const snapshot = shareSnapshot(trip,input.options), id = randomToken();
     if(snapshot.options.map)snapshot._mapCipher=await encryptMapKey(input.mapKey||env.MAPS_BROWSER_KEY||'',env);
+    snapshot._passwordCipher=await encryptMapKey(input.password,env);
     await env.DB.prepare('INSERT INTO shares(id,title,payload,password_hash,expires_at,created_at) VALUES (?,?,?,?,?,?)').bind(id, snapshot.title, JSON.stringify(snapshot), await passwordHash(input.password), input.expiresAt, now).run();
     return {id};
   }
   const revoke = path.match(/^\/api\/shares\/([a-f0-9]{64})$/);
+  const sharePassword=path.match(/^\/api\/shares\/([a-f0-9]{64})\/password$/);
+  if(sharePassword&&(method==='GET'||method==='PUT')) {
+    const item=await liveShare(env,sharePassword[1],now),snapshot=JSON.parse(item.payload);
+    if(method==='GET')return {password:snapshot._passwordCipher?await decryptMapKey(snapshot._passwordCipher,env):null};
+    const input=await body(request);
+    if(typeof input.password!=='string'||input.password.length<8||input.password.length>128)fail(400,'공유 비밀번호는 8~128자로 입력해 주세요.');
+    snapshot._passwordCipher=await encryptMapKey(input.password,env);
+    await env.DB.batch([
+      env.DB.prepare('UPDATE shares SET password_hash=?,payload=? WHERE id=?').bind(await passwordHash(input.password),JSON.stringify(snapshot),sharePassword[1]),
+      env.DB.prepare('DELETE FROM share_sessions WHERE share_id=?').bind(sharePassword[1])
+    ]);return {ok:true};
+  }
   if(revoke&&method==='PATCH') {
-    const input=await body(request),existing=await env.DB.prepare('SELECT id FROM shares WHERE id=? AND revoked=0').bind(revoke[1]).first();
+    const input=await body(request),existing=await env.DB.prepare('SELECT id,payload FROM shares WHERE id=? AND revoked=0').bind(revoke[1]).first();
     if(!existing)fail(404,'공유 링크를 찾지 못했어요.');
     const saved=await env.DB.prepare('SELECT payload FROM books WHERE id=1').first();
     const trip=saved&&JSON.parse(saved.payload).trips.find(item=>item.id===input.tripId);
     if(!trip)fail(404,'공유할 여행을 확인해 주세요.');
     const snapshot=shareSnapshot(trip,input.options);
+    snapshot._passwordCipher=JSON.parse(existing.payload)._passwordCipher||'';
     if(snapshot.options.map)snapshot._mapCipher=await encryptMapKey(input.mapKey||env.MAPS_BROWSER_KEY||'',env);
     await env.DB.prepare('UPDATE shares SET title=?,payload=? WHERE id=?').bind(snapshot.title,JSON.stringify(snapshot),revoke[1]).run();return {id:revoke[1]};
   }
   if (revoke && method === 'DELETE') {
     await env.DB.batch([
-      env.DB.prepare('UPDATE shares SET revoked=1,payload=? WHERE id=?').bind('{}', revoke[1]),
+      env.DB.prepare('DELETE FROM shares WHERE id=?').bind(revoke[1]),
       env.DB.prepare('DELETE FROM share_sessions WHERE share_id=?').bind(revoke[1])
     ]); return {ok:true};
   }

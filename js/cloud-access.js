@@ -38,10 +38,17 @@
     card.append(brand, el('h1','',title), el('p','',copy)); outer.append(card); gate.append(outer);
     return {card,error};
   }
-  function field(label, type, name, autocomplete) {
+  function passwordEye(input, beforeReveal) {
+    const toggle=button('',null,true);toggle.className='cloud-password-eye';
+    function draw(){const shown=input.type==='text';toggle.setAttribute('aria-label',shown?'비밀번호 숨기기':'비밀번호 보기');toggle.setAttribute('aria-pressed',String(shown));toggle.innerHTML='<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>'+(shown?'<path d="m3 3 18 18"/>':'')+'</svg>';}
+    toggle.onclick=async()=>{if(input.type==='password'&&beforeReveal&&!await beforeReveal())return;input.type=input.type==='password'?'text':'password';draw();};draw();return toggle;
+  }
+  function field(label, type, name, autocomplete, beforeReveal) {
     const node = el('label','',label), input = el('input'); input.type = type; input.name = name;
     input.required = true; input.maxLength = type === 'password' ? 128 : 100;
-    input.autocomplete = autocomplete; node.append(input); return {node,input};
+    input.autocomplete = autocomplete;
+    if(type==='password'){const wrap=el('div','cloud-password-field'),toggle=passwordEye(input,beforeReveal);wrap.append(input,toggle);node.append(wrap);return {node,input,toggle};}
+    node.append(input); return {node,input};
   }
   function login(errorText = '') {
     ready = false; token = ''; sessionStorage.removeItem('sappun-owner-session');
@@ -196,12 +203,29 @@
     };
     async function refresh() {
       const {shares} = await api('/api/shares'); list.replaceChildren(el('h3','','공유 중인 링크'));
-      for (const item of shares.filter(item=>item.tripId?item.tripId===targetId:item.title===title)) {
+      const visible=shares.filter(item=>(item.tripId?item.tripId===targetId:item.title===title)&&!item.revoked&&item.expires_at*1000>Date.now());
+      for (const item of visible) {
         const row = el('div','cloud-share-item');
         const active = !item.revoked && item.expires_at*1000 > Date.now();
         const note = el('p','cloud-help');
         row.append(el('strong','',item.title),el('small','',active ? new Date(item.expires_at*1000).toLocaleString('ko-KR')+'까지' : '공유 종료'));
         if (active) {
+          if(item.hasPassword){
+            let loaded=false;
+            const saved=field('설정한 비밀번호','password','saved-share-password','off',async()=>{
+              if(loaded)return true;
+              try{const result=await api('/api/shares/'+item.id+'/password');if(!result.password){note.textContent='이전 비밀번호는 다시 설정해 주세요.';return false;}saved.input.value=result.password;loaded=true;return true;}
+              catch(err){error.textContent=message(err);return false;}
+            });saved.input.required=false;saved.input.readOnly=true;saved.input.placeholder='••••••••';saved.node.classList.add('cloud-saved-password');row.append(saved.node);
+          }else{
+            const reset=el('div','cloud-password-reset'),next=field('새 공유 비밀번호','password','reset-share-password','new-password');next.input.minLength=8;next.input.required=false;
+            const apply=button('비밀번호 다시 설정',async event=>{
+              event.currentTarget.disabled=true;
+              try{await api('/api/shares/'+item.id+'/password',{method:'PUT',body:{password:next.input.value}});next.input.value='';await refresh();}
+              catch(err){error.textContent=message(err);}finally{event.currentTarget.disabled=false;}
+            },true);
+            reset.append(el('p','cloud-help','이전 링크의 비밀번호는 확인할 수 없어요. 다시 설정하면 이후에는 여기서 볼 수 있어요.'),next.node,apply);row.append(reset);
+          }
           const actions = el('div','cloud-share-actions');
           actions.append(button('링크 복사',() => copy(linkFor(item.id),note),true),button('선택 설정 반영',async event=>{
             event.currentTarget.disabled=true;
@@ -215,7 +239,7 @@
         }
         row.append(note); list.append(row);
       }
-      if (!shares.length) list.append(el('p','','아직 만든 공유 링크가 없어요.'));
+      if (!visible.length) list.append(el('p','','공유 중인 링크가 없어요.'));
     }
     form.onsubmit = async event => {
       event.preventDefault(); submit.disabled = true; error.textContent = '';
