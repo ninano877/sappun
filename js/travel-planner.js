@@ -2038,11 +2038,13 @@ function syncFollowingSchedule(d, index, minutes) {
 }
 
 function cascadeScheduleEdit(d,index,previousEnd){
-  const stops=state.days[d],first=stops?.[index];if(!first||!hasStopTime(first)||!Number.isFinite(previousEnd))return;
+  const stops=state.days[d],first=stops?.[index];if(!first||!hasStopTime(first))return;
+  const minutes=first.noTravel?0:hasSegment(first)&&first.minutes!==null&&first.minutes!==undefined?Number(first.minutes):null;
+  if(!Number.isFinite(previousEnd)){if(minutes!==null&&Number.isFinite(minutes))syncFollowingSchedule(d,index,minutes);return;}
   const end=Date.parse(scheduleEndDate(first,d)+'T'+stopEnd(first)+':00Z'),delta=end-previousEnd;
   const changes=[];for(const stop of stops.slice(index+1)){if(!hasStopTime(stop))continue;const start=Date.parse((stop.startDate||tripDate(d))+'T'+stopStart(stop)+':00Z')+delta,finish=Date.parse(scheduleEndDate(stop,d)+'T'+stopEnd(stop)+':00Z')+delta;if(!Number.isFinite(start)||!Number.isFinite(finish)||new Date(start).toISOString().slice(0,10)>trip().end||new Date(finish).toISOString().slice(0,10)>trip().end||new Date(start).toISOString().slice(0,10)<tripDate(0)){toast('뒤 일정이 여행 기간을 벗어나요. 여행 기간을 먼저 확인해 주세요.','warning');return;}changes.push({stop,start,finish});}
   for(const {stop,start,finish} of changes){const a=new Date(start).toISOString(),b=new Date(finish).toISOString();Object.assign(stop,{startDate:a.slice(0,10),startTime:a.slice(11,16),time:a.slice(11,16),endDate:b.slice(0,10),endTime:b.slice(11,16)});}
-  if(first.minutes!==null&&first.minutes!==undefined&&hasSegment(first))syncFollowingSchedule(d,index,Number(first.minutes));
+  if(minutes!==null&&Number.isFinite(minutes))syncFollowingSchedule(d,index,minutes);
 }
 function legTimes(d, i) {
   let a = state.days[d][i],
@@ -2087,8 +2089,8 @@ ${input(
         )}
       </div>
       <p class="note">
-        이 장소에서 머무르는 시간이에요. 종료 시간이 다음 이동의 출발 시간이 됩니다. 다른
-        장소의 시작·종료 시간은 바뀌지 않아요.
+        종료 시간에 저장된 이동시간을 더해 뒤 일정을 맞춰요. 각 일정의 머무르는 시간은 유지하고,
+        이동시간이 없는 구간은 기존 간격을 유지해요. Google 조회는 하지 않아요.
       </p></details>
       ${select(
         "장소 분류",
