@@ -1,4 +1,5 @@
 // 화면 공통 설정: 통화 코드·분류·아이콘·색상·빈 기본 설정만 포함합니다.
+const sharedViewMode = typeof location !== 'undefined' && /(?:^|[?&])share=/.test(location.search || '');
 
 const WORLD_CURRENCY_CODES = [
   "AED",

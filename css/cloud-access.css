@@ -12,6 +12,23 @@ body.auth-pending > :not(#cloud-gate):not(script):not(link):not(.cloud-dialog) {
 .cloud-form label { display:grid; gap:7px; font-size:14px; color:#4e5968; }
 .cloud-form input { width:100%; box-sizing:border-box; min-height:48px; border:1px solid #dfe4eb; background:#fff; border-radius:12px; padding:12px; font:inherit; }
 .cloud-form input:focus { outline:2px solid #3182f6; outline-offset:1px; }
+.cloud-share-options { border:1px solid #e5e8eb; border-radius:14px; padding:12px 14px; margin:0; }
+.cloud-share-options legend { padding:0 4px; font-size:14px; font-weight:700; color:#333d4b; }
+.cloud-form .cloud-share-check { display:flex; align-items:center; gap:9px; margin:9px 0; cursor:pointer; }
+.cloud-form .cloud-share-check input { width:18px; min-height:18px; height:18px; margin:0; padding:0; accent-color:#3182f6; flex-shrink:0; }
+.cloud-share-actions { flex-wrap:wrap; }
+.shared-readonly-label { font-size:12px; color:#6b7684; white-space:nowrap; }
+.shared-note { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.7; }
+body.shared-readonly button:disabled { opacity:1; cursor:default; }
+body.shared-readonly:not(.mobile-shell) .mobile-trip-menu,body.shared-readonly .mobile-trip-menu-panel > small:nth-of-type(2) { display:none!important; }
+body.shared-readonly header .tools,body.shared-readonly .mobile-menu-tools,body.shared-readonly [data-tabs-edit],body.shared-readonly .schedule-drag-handle,body.shared-readonly .card-inline-tools,body.shared-readonly .map-searchbox,body.shared-readonly .temp-location-lookup,body.shared-readonly [data-delete],body.shared-readonly .add-stop-card,body.shared-readonly .day-add-place,body.shared-readonly [data-add-place],body.shared-readonly [data-edit-budget],body.shared-readonly [data-common-expense],body.shared-readonly .prep-delete-button,body.shared-readonly [data-prep-add],body.shared-readonly .trip-travelers-edit { display:none!important; }
+body.shared-readonly .ledger-cell:disabled { opacity:1; color:inherit; cursor:default; }
+body.shared-readonly .trip-menu-shell .mobile-menu-tools { display:none; }
+body.shared-readonly.shared-hide-costs .trip-personal-spend,body.shared-readonly.shared-hide-costs .stop-costs,body.shared-readonly.shared-hide-costs .card-money,body.shared-readonly.shared-hide-costs .expense-tags,body.shared-readonly.shared-hide-costs .below,body.shared-readonly.shared-hide-costs .budgetbody { display:none!important; }
+body.shared-readonly.shared-hide-costs #summary.trip-summary { grid-template-columns:1fr; }
+body.shared-readonly.shared-hide-map .mapcolumn,body.shared-readonly.shared-hide-map .schedule-day-map,body.shared-readonly.shared-hide-map [data-mapjump],body.shared-readonly.shared-hide-map [data-card-map],body.shared-readonly.shared-hide-map .mobile-place-map,body.shared-readonly.shared-hide-map #show-all-map { display:none!important; }
+body.shared-readonly.shared-hide-map .layout { grid-template-columns:minmax(0,1fr)!important; }
+body.shared-readonly.shared-hide-map.mobile-itinerary .layout { padding-top:0!important; }
 .cloud-button { border:0; border-radius:12px; padding:13px 18px; background:#3182f6; color:white; font:inherit; font-weight:700; cursor:pointer; }
 .cloud-button.secondary { background:#f2f4f6; color:#4e5968; }
 .cloud-button:disabled { opacity:.55; cursor:wait; }

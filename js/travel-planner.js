@@ -12,12 +12,14 @@ function travelCurrency(settings = state.settings) {
 
 function serializeTripBook(value) {
   return JSON.stringify(value, (name, item) =>
-    name === 'key' || /^(?:api[_-]?key|access[_-]?token|secret|password|authorization)$/i.test(name) ? '' : item);
+    name === 'key' && ['itinerary','list','settlement','preparation','materials'].includes(item) ? item : name === 'key' || /^(?:api[_-]?key|access[_-]?token|secret|password|authorization)$/i.test(name) ? '' : item);
 }
 function sessionMapKey() {
+  if (sharedViewMode) return window.SAPPUN_SHARED_MAP_KEY || '';
   try { return sessionStorage.getItem('sappun-map-key') || ''; } catch { return ''; }
 }
 function storeSessionMapKey(key) {
+  if (sharedViewMode) { window.SAPPUN_SHARED_MAP_KEY = key || ''; return; }
   try {
     if (key) sessionStorage.setItem('sappun-map-key',key);
     else sessionStorage.removeItem('sappun-map-key');
@@ -111,12 +113,12 @@ const seed = {
 };
 let state;
 try {
-  state = JSON.parse(localStorage.getItem("sappun-blue-v2")) || seed;
+  state = sharedViewMode ? seed : JSON.parse(localStorage.getItem("sappun-blue-v2")) || seed;
 } catch {
   state = seed;
 }
 state.settings.key = sessionMapKey();
-try { localStorage.setItem('sappun-blue-v2',serializeTripBook(state)); } catch {}
+try { if (!sharedViewMode) localStorage.setItem('sappun-blue-v2',serializeTripBook(state)); } catch {}
 let day = 0,
   selected = 0,
   filter = "전체",
@@ -281,7 +283,7 @@ function dbop(mode, fn) {
     t.onabort = () => reject(t.error);
   });
 }
-const allFiles = () => dbop("readonly", (s) => s.getAll());
+const allFiles = () => sharedViewMode ? Promise.resolve([]) : dbop("readonly", (s) => s.getAll());
 
 $("#upload").onclick = () => {trip().workspaceView="materials";save();render();};
 
@@ -525,6 +527,7 @@ document.addEventListener('change',event=>{
   }
 });
 async function resolvePlace(s, refresh = false) {
+  if(sharedViewMode){const point=savedPoint(s);if(point)return point;throw Error('이 장소에는 저장된 지도 위치가 없어요.');}
   s = linkedLodging(s);
   if (!refresh && s.placeQuery === s.query && s.chosenPlace?.lat !== undefined) return s.chosenPlace;
   if (!s.query) throw Error("위치 미입력");
@@ -1073,7 +1076,7 @@ function installSearch() {
 // Multi-trip home, green split planner, and button controls.
 let tripBook;
 try {
-  tripBook = JSON.parse(localStorage.getItem("sappun-trips-v3"));
+  tripBook = sharedViewMode ? null : JSON.parse(localStorage.getItem("sappun-trips-v3"));
 } catch {}
 if (!tripBook || !Array.isArray(tripBook.trips)) {
   tripBook = { version: 3, key: "", trips: [] };
@@ -1118,6 +1121,7 @@ function newTripData(count, people = 1) {
 state = trip()?.data || newTripData(1);
 state.settings.key = tripBook.key;
 function save() {
+  if (sharedViewMode) return true;
   try {
     if (trip()) trip().data = state;
     tripBook.trips.forEach(t=>syncLodgingLinks(t.data));

@@ -177,8 +177,17 @@
     expiry.input.value = localDate(new Date(Date.now()+7*86400000));
     expiry.input.min = localDate(new Date()); expiry.input.max = localDate(new Date(Date.now()+90*86400000));
     const submit = button('공유 링크 만들기'); submit.type = 'submit';
-    form.append(password.node,expiry.node,submit,error);
-    panel.append(info,el('p','cloud-help','지금의 일정·장소 핀만 읽기 전용으로 공유해요. 지출·첨부파일·개인 메모는 제외해요. 수정한 일정은 새 링크로 공유해 주세요.'),form);
+    const selections=el('fieldset','cloud-share-options');selections.append(el('legend','','보여줄 탭'));
+    const tabChecks=new Map(),optionChecks=new Map();
+    const check=(parent,label,checked)=>{const row=el('label','cloud-share-check'),input=el('input');input.type='checkbox';input.checked=checked;row.append(input,el('span','',label));parent.append(row);return input;};
+    for(const [key,label] of [['itinerary','여행 일정'],['list','시간표'],['settlement','경비'],['preparation','체크리스트'],['materials','자료실 · 내용과 링크']])tabChecks.set(key,check(selections,trip().workspaceTabs?.find(tab=>tab.key===key)?.label||label,['itinerary','list'].includes(key)));
+    const details=el('fieldset','cloud-share-options');details.append(el('legend','','함께 보여줄 정보'));
+    for(const [key,label,checked] of [['map','연결한 지도와 장소 핀',true],['notes','일정 메모',false],['costs','비용 · 예산 · 이동 교통비',false],['members','여행자 이름과 사진',false]])optionChecks.set(key,check(details,label,checked));
+    tabChecks.get('settlement').onchange=()=>{if(tabChecks.get('settlement').checked)optionChecks.get('costs').checked=true;};
+    optionChecks.get('costs').onchange=()=>{if(!optionChecks.get('costs').checked)tabChecks.get('settlement').checked=false;};
+    const shareSettings=()=>({tripId:targetId,options:{tabs:[...tabChecks].filter(([,input])=>input.checked).map(([key])=>key),...Object.fromEntries([...optionChecks].map(([key,input])=>[key,input.checked]))},mapKey:optionChecks.get('map').checked?(state.settings.key||sessionMapKey()):''});
+    form.append(password.node,expiry.node,selections,details,submit,error);
+    panel.append(info,el('p','cloud-help','선택한 탭을 내 화면과 같은 모습으로 공유해요. 친구는 수정할 수 없어요. 첨부파일의 실제 내용은 제외해요. 지도를 포함하면 친구도 현재 연결한 지도를 사용해요.'),form);
     const list = el('div'); panel.append(list);
     const linkFor = id => {const link = new URL('travel-planner.html', location.href); link.search = ''; link.hash = ''; link.searchParams.set('share',id); return link.href;};
     const copy = async (value, note) => {
@@ -187,14 +196,18 @@
     };
     async function refresh() {
       const {shares} = await api('/api/shares'); list.replaceChildren(el('h3','','공유 중인 링크'));
-      for (const item of shares) {
+      for (const item of shares.filter(item=>item.tripId?item.tripId===targetId:item.title===title)) {
         const row = el('div','cloud-share-item');
         const active = !item.revoked && item.expires_at*1000 > Date.now();
         const note = el('p','cloud-help');
         row.append(el('strong','',item.title),el('small','',active ? new Date(item.expires_at*1000).toLocaleString('ko-KR')+'까지' : '공유 종료'));
         if (active) {
           const actions = el('div','cloud-share-actions');
-          actions.append(button('링크 복사',() => copy(linkFor(item.id),note),true),button('공유 취소',async event => {
+          actions.append(button('링크 복사',() => copy(linkFor(item.id),note),true),button('선택 설정 반영',async event=>{
+            event.currentTarget.disabled=true;
+            try{await syncNow();await api('/api/shares/'+item.id,{method:'PATCH',body:shareSettings()});note.textContent='이 링크에 현재 일정과 선택한 정보를 반영했어요. 친구는 새로고침하면 볼 수 있어요.';}
+            catch(err){error.textContent=message(err);}finally{event.currentTarget.disabled=false;}
+          },true),button('공유 취소',async event => {
             event.currentTarget.disabled = true;
             try {await api('/api/shares/'+item.id,{method:'DELETE'}); await refresh();}
             catch(err) {error.textContent = message(err); event.currentTarget.disabled = false;}
@@ -208,7 +221,7 @@
       event.preventDefault(); submit.disabled = true; error.textContent = '';
       try {
         await syncNow();
-        const result = await api('/api/shares',{method:'POST',body:{tripId:targetId,password:password.input.value,expiresAt:Math.floor(new Date(expiry.input.value).getTime()/1000)}});
+        const result = await api('/api/shares',{method:'POST',body:{...shareSettings(),password:password.input.value,expiresAt:Math.floor(new Date(expiry.input.value).getTime()/1000)}});
         password.input.value = '';
         const resultBox = el('div','cloud-share-result'), note = el('p','cloud-help',linkFor(result.id));
         resultBox.append(note,button('링크 복사',() => copy(linkFor(result.id),note))); form.after(resultBox); await refresh();
@@ -232,6 +245,16 @@
   }
   async function showShared(shareToken) {
     let payload = await api('/api/shared/'+shareId,{auth:shareToken});
+    if(payload.trip.planner){
+      SappunSharedPlanner.open(payload,shareId);
+      const poll=setInterval(async()=>{
+        if(document.hidden)return;
+        try{const updated=await api('/api/shared/'+shareId,{auth:shareToken});if(updated.trip.updatedAt!==payload.trip.updatedAt){payload=updated;SappunSharedPlanner.open(updated,shareId);}}
+        catch(err){clearInterval(poll);SappunSharedPlanner.close();sharedLogin(message(err));}
+      },30000);
+      setTimeout(()=>{clearInterval(poll);SappunSharedPlanner.close();sharedLogin('공유가 만료되었어요.');},Math.max(0,payload.expiresAt*1000-Date.now()));
+      return;
+    }
     let activeDay = 0, map, markers = [], stopsObserver, poll;
     gate.replaceChildren();
     const page = el('main','shared-page'), heading = el('header','shared-header');

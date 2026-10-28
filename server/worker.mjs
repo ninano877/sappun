@@ -25,7 +25,7 @@ function fail(status, message) { throw Object.assign(new Error(message), {status
 function text(value, max = 1000) { return typeof value === 'string' ? value.slice(0, max) : ''; }
 export function sanitize(value) {
   return JSON.parse(JSON.stringify(value, (key, item) =>
-    /^(?:key|api[_-]?key|access[_-]?token|secret|password|authorization)$/i.test(key) ? '' : item));
+    key==='key'&&['itinerary','list','settlement','preparation','materials'].includes(item)?item:/^(?:key|api[_-]?key|access[_-]?token|secret|password|authorization)$/i.test(key) ? '' : item));
 }
 export function validateBook(book) {
   if (!book || !Array.isArray(book.trips) || book.trips.length > 100) fail(400, '여행 데이터 형식을 확인해 주세요.');
@@ -40,9 +40,30 @@ export function validateBook(book) {
   return sanitize(book);
 }
 // Explicit public fields: no expense details, members, files, source URLs or private notes.
-export function shareSnapshot(trip) {
+export function shareSnapshot(trip, choices = {}) {
   const stops = trip.data.days.flat();
-  return {
+  const allowedTabs=['itinerary','list','settlement','preparation','materials'];
+  const options={tabs:Array.isArray(choices.tabs)?[...new Set(choices.tabs.filter(key=>allowedTabs.includes(key)))]:['itinerary','list'],notes:choices.notes===true,costs:choices.costs===true,members:choices.members===true,map:choices.map!==false};
+  if(!options.tabs.length)fail(400,'공유할 탭을 하나 이상 선택해 주세요.');
+  if(options.tabs.includes('settlement'))options.costs=true;
+  const pick=(value,keys)=>Object.fromEntries(keys.filter(key=>value?.[key]!==undefined).map(key=>[key,value[key]]));
+  const expense=e=>pick(e,['id','name','category','currency','actual','amount','planned','scope','amountBasis','peopleSnapshot','payerId','splitIds','reimbursedIds','allocationConfirmed','settlementStatus','stopIds']);
+  const data={version:2,settings:pick(trip.data.settings,['people','travelCurrency','currencyRates','rate']),expenses:options.costs?(trip.data.expenses||[]).map(expense):[]};
+  data.settings.budget=options.costs?Number(trip.data.settings.budget)||0:0;
+  data.settings.members=(trip.data.settings.members||[]).map((member,index)=>({id:member.id,name:options.members?text(member.name,40):'여행자 '+(index+1),active:member.active,...(options.members&&typeof member.photo==='string'&&member.photo.length<=60000&&/^data:image\/(jpeg|png|webp);base64,/.test(member.photo)?{photo:member.photo}:{})}));
+  data.days=trip.data.days.map(day=>day.map(stop=>{
+    const item=pick(stop,['id','name','category','time','startTime','endTime','timeUnset','startDate','endDate','stay','mode','minutes','segmentEnabled','manualRoute','lodgingStopId']);
+    item.query=options.map?text(stop.query,1000):'';item.note=options.notes?text(stop.note,1000):'';
+    item.currency=stop.currency||data.settings.travelCurrency||'KRW';item.amount=options.costs?(stop.amount??null):null;item.fare=options.costs?(stop.fare??null):null;
+    if(options.map){item.mapsUrl=text(stop.mapsUrl,4096);if(stop.placeQuery===stop.query&&Number.isFinite(stop.chosenPlace?.lat)&&Number.isFinite(stop.chosenPlace?.lng)){item.chosenPlace=pick(stop.chosenPlace,['id','lat','lng','name','address','url']);item.placeQuery=item.query;}}
+    item.costItems=options.costs?(stop.costItems||[]).map(expense):[];
+    if(options.costs){Object.assign(item,pick(stop,['actualFare','actualFareCurrency','fareCurrency']));if(stop.farePayment)item.farePayment=expense(stop.farePayment);}
+    return item;
+  }));
+  data.preparation=options.tabs.includes('preparation')?(trip.data.preparation||[]).map(task=>({...pick(task,['id','title','status','category','emoji','color','checklist']),note:options.notes?text(task.note,1000):''})):[];
+  data.resources=options.tabs.includes('materials')?(trip.data.resources||[]).map(resource=>({...pick(resource,['id','title','category','stopIds']),note:options.notes?text(resource.note,30000):'',references:(resource.references||[]).filter(link=>/^https?:\/\//i.test(link.url)).map(link=>pick(link,['id','url','title','previewMode']))})):[];
+  const planner={...pick(trip,['title','location','start','end','viewMode','workspaceView','mapDisplay']),id:trip.id,data,workspaceTabs:allowedTabs.map(key=>({...pick((trip.workspaceTabs||[]).find(tab=>tab.key===key)||{},['emoji','label']),key,hidden:!options.tabs.includes(key)}))};
+  const snapshot = {
     title: text(trip.title, 100), location: text(trip.location, 150), start:trip.start, end:trip.end,
     days: trip.data.days.map(day => day.map(stop => {
       const lodging = stop.lodgingStopId ? stops.find(item => item.id === stop.lodgingStopId && item.category === '숙소' && !item.lodgingStopId) : null;
@@ -56,6 +77,19 @@ export function shareSnapshot(trip) {
       };
     }))
   };
+  return {...snapshot,format:'sappun-share-v2',options,planner:sanitize(planner),updatedAt:Date.now()};
+}
+async function mapCipherKey(env) {
+  return crypto.subtle.importKey('raw',await crypto.subtle.digest('SHA-256',encoder.encode('sappun-share-map:'+env.OWNER_PASSWORD_HASH)),{name:'AES-GCM'},false,['encrypt','decrypt']);
+}
+async function encryptMapKey(value,env) {
+  if(typeof value!=='string'||!value||value.length>256)return '';
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const encrypted=await crypto.subtle.encrypt({name:'AES-GCM',iv},await mapCipherKey(env),encoder.encode(value));
+  return hex(iv)+':'+hex(encrypted);
+}
+async function decryptMapKey(value,env) {
+  try{const [iv,cipher]=value.split(':');const bytes=s=>new Uint8Array(s.match(/../g).map(part=>parseInt(part,16)));return new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:bytes(iv)},await mapCipherKey(env),bytes(cipher)));}catch{return '';}
 }
 async function body(request) {
   if (Number(request.headers.get('Content-Length')) > MAX_BYTES) fail(413, '저장할 데이터가 너무 커요. 첨부파일은 제외해 주세요.');
@@ -148,7 +182,9 @@ async function route(request, env, now) {
       const session = await env.DB.prepare('SELECT * FROM share_sessions WHERE token_hash=? AND share_id=?').bind(hash, id).first();
       if (!session || session.expires_at <= now) fail(401, '비밀번호를 다시 입력해 주세요.');
       const share = await liveShare(env, id, now);
-      return {trip:JSON.parse(share.payload), expiresAt:share.expires_at, mapKey:env.MAPS_BROWSER_KEY || ''};
+      const snapshot=JSON.parse(share.payload),cipher=snapshot._mapCipher;delete snapshot._mapCipher;
+      const mapKey=snapshot.options?.map===false?'':(cipher?await decryptMapKey(cipher,env):env.MAPS_BROWSER_KEY||'');
+      return {trip:snapshot, expiresAt:share.expires_at, mapKey};
     }
     fail(405, '읽기만 가능한 공유예요.');
   }
@@ -171,7 +207,7 @@ async function route(request, env, now) {
     return {revision:input.revision + 1};
   }
   if (path === '/api/shares' && method === 'GET') {
-    const result = await env.DB.prepare('SELECT id,title,expires_at,revoked,created_at FROM shares ORDER BY created_at DESC').all(); return {shares:result.results};
+    const result = await env.DB.prepare('SELECT id,title,expires_at,revoked,created_at,payload FROM shares ORDER BY created_at DESC').all(); return {shares:result.results.map(row=>{const snapshot=JSON.parse(row.payload);const {payload,...item}=row;return {...item,tripId:snapshot.planner?.id,options:snapshot.options};})};
   }
   if (path === '/api/shares' && method === 'POST') {
     const input = await body(request);
@@ -182,11 +218,22 @@ async function route(request, env, now) {
     const saved = await env.DB.prepare('SELECT payload FROM books WHERE id=1').first();
     const trip = saved && JSON.parse(saved.payload).trips.find(t => t.id === input.tripId);
     if (!trip) fail(404, '여행을 먼저 서버에 저장해 주세요.');
-    const snapshot = shareSnapshot(trip), id = randomToken();
+    const snapshot = shareSnapshot(trip,input.options), id = randomToken();
+    if(snapshot.options.map)snapshot._mapCipher=await encryptMapKey(input.mapKey||env.MAPS_BROWSER_KEY||'',env);
     await env.DB.prepare('INSERT INTO shares(id,title,payload,password_hash,expires_at,created_at) VALUES (?,?,?,?,?,?)').bind(id, snapshot.title, JSON.stringify(snapshot), await passwordHash(input.password), input.expiresAt, now).run();
     return {id};
   }
   const revoke = path.match(/^\/api\/shares\/([a-f0-9]{64})$/);
+  if(revoke&&method==='PATCH') {
+    const input=await body(request),existing=await env.DB.prepare('SELECT id FROM shares WHERE id=? AND revoked=0').bind(revoke[1]).first();
+    if(!existing)fail(404,'공유 링크를 찾지 못했어요.');
+    const saved=await env.DB.prepare('SELECT payload FROM books WHERE id=1').first();
+    const trip=saved&&JSON.parse(saved.payload).trips.find(item=>item.id===input.tripId);
+    if(!trip)fail(404,'공유할 여행을 확인해 주세요.');
+    const snapshot=shareSnapshot(trip,input.options);
+    if(snapshot.options.map)snapshot._mapCipher=await encryptMapKey(input.mapKey||env.MAPS_BROWSER_KEY||'',env);
+    await env.DB.prepare('UPDATE shares SET title=?,payload=? WHERE id=?').bind(snapshot.title,JSON.stringify(snapshot),revoke[1]).run();return {id:revoke[1]};
+  }
   if (revoke && method === 'DELETE') {
     await env.DB.batch([
       env.DB.prepare('UPDATE shares SET revoked=1,payload=? WHERE id=?').bind('{}', revoke[1]),
@@ -201,7 +248,7 @@ export default {
     const headers = {'Content-Type':'application/json; charset=utf-8', 'Cache-Control':'no-store', 'Vary':'Origin', 'X-Content-Type-Options':'nosniff'};
     const localMapLink = new URL(request.url).pathname === '/api/maps/resolve' && (origin === 'null' || /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(origin || ''));
     const allowedOrigin = origin === env.APP_ORIGIN || localMapLink;
-    if (allowedOrigin) Object.assign(headers, {'Access-Control-Allow-Origin':origin, 'Access-Control-Allow-Methods':localMapLink?'POST,OPTIONS':'GET,POST,PUT,DELETE,OPTIONS', 'Access-Control-Allow-Headers':'Content-Type,Authorization', 'Access-Control-Max-Age':'600'});
+    if (allowedOrigin) Object.assign(headers, {'Access-Control-Allow-Origin':origin, 'Access-Control-Allow-Methods':localMapLink?'POST,OPTIONS':'GET,POST,PUT,PATCH,DELETE,OPTIONS', 'Access-Control-Allow-Headers':'Content-Type,Authorization', 'Access-Control-Max-Age':'600'});
     if (!env.APP_ORIGIN || !env.DB || !env.OWNER_PASSWORD_HASH || !env.OWNER_USERNAME) return new Response(JSON.stringify({error:'서버 설정을 완료해 주세요.'}), {status:503, headers});
     if (!allowedOrigin) return new Response(JSON.stringify({error:'허용되지 않은 접속 주소예요.'}), {status:403, headers});
     if (request.method === 'OPTIONS') return new Response(null, {status:204, headers});
