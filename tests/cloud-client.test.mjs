@@ -70,6 +70,10 @@ for (const href of ['file:///test/travel-planner.html','http://localhost:5500/tr
 const arbitrary=setup({configured:false,href:'http://localhost:5500/travel-planner.html'});
 arbitrary.input('username').value='anything';arbitrary.input('password').value='anything';await arbitrary.submit();
 assert.equal(arbitrary.gate.hidden,true,'any input enters local preview');
+const connectedPreview=setup({configured:true,href:'http://localhost:5500/travel-planner.html'});
+await connectedPreview.submit();
+assert.equal(connectedPreview.gate.hidden,true,'local preview remains available after deployment configuration');
+assert.equal(connectedPreview.calls.length,0,'local preview never sends credentials to production');
 const localShare=setup({configured:false,share:'a'.repeat(64),href:'http://localhost:5500/travel-planner.html'});
 assert.equal(localShare.findText('일정 보기').disabled,true,'shared links never use the local bypass');
 const owner=setup();owner.input('username').value='owner';owner.input('password').value='owner-test-password';await owner.submit();

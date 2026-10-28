@@ -5,7 +5,7 @@
   const apiBase = (window.SAPPUN_CLOUD?.apiBase || '').replace(/\/$/, '');
   const shareId = new URLSearchParams(location.search).get('share');
   const pageAddress = new URL(location.href);
-  const localPreview = !apiBase && !shareId && (pageAddress.protocol === 'file:' ||
+  const localPreview = !shareId && (pageAddress.protocol === 'file:' ||
     ['localhost', '127.0.0.1', '[::1]'].includes(pageAddress.hostname));
   let token = sessionStorage.getItem('sappun-owner-session') || '';
   let revision = 0, ready = false, paused = false, timer, inFlight, statusNode, shareButton;
