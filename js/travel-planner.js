@@ -1281,8 +1281,8 @@ function renderHome() {
         .join("")}
     </section>
     <p class="home-note">
-      여행과 파일은 현재 브라우저에 저장돼요. 다른 기기로 옮길 때는 첨부 파일이 포함된
-      백업을 이용하세요.
+      일정은 이 기기에 저장하고, 계정 로그인 시 서버와 동기화해요.
+      첨부파일을 다른 기기로 옮길 때는 백업을 이용하세요.
     </p>`;
   $("#create-trip").onclick = () => tripForm();
   loadTripCovers();
