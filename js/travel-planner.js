@@ -2372,6 +2372,10 @@ function segmentBlock(d, i) {
   const distance = entered && route?.status === "ok" && route.distance > 0
     ? (route.distance < 1000 ? Math.round(route.distance) + "m" : (route.distance / 1000).toLocaleString("ko-KR", {maximumFractionDigits: 1}) + "km") : "";
   const summary = entered ? [s.mode, minutes !== null ? minutes + "분" : "", distance].filter(Boolean).join(" · ") : "이동 추가";
+  if (sharedViewMode) {
+    if (!entered) return "";
+    return '<div class="itinerary-connection"><span class="shared-segment-summary">'+(transportIcon[s.mode]||"↳")+' '+esc(summary)+'</span>'+(s.actualFare !== null && s.actualFare !== undefined ? '<span class="segment-fare">'+money(won(s.actualFare,s.actualFareCurrency||s.fareCurrency||travelCurrency()))+'</span>' : '')+'</div>';
+  }
   return `<div class="itinerary-connection${entered ? "" : " is-empty"}">
     <details class="segment-popover" data-segment-day="${d}" data-segment-index="${i}">
       <summary aria-label="${esc(s.name)}에서 ${esc(next.name)}까지 이동 설정">${entered ? transportIcon[s.mode] || "↳" : "＋"} <span>${esc(summary)}</span><span class="segment-chevron" aria-hidden="true">⌄</span></summary>

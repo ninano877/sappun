@@ -38,6 +38,8 @@ body.shared-readonly.shared-hide-summary #summary { display:none!important; }
 .shared-file-viewer > p { padding:12px; }
 .shared-file-preview-actions { display:flex; justify-content:flex-end; flex-shrink:0; }
 body.shared-readonly [data-dayadd],body.shared-readonly .schedule-add-row { display:none!important; }
+body.shared-readonly.shared-hide-costs .segment-fare { display:none!important; }
+.shared-segment-summary { color:#6b7684; font-size:12px; padding:6px 0; }
 body.shared-readonly #place-detail-panel .detail-heading { display:flex; gap:12px; }
 body.shared-readonly #place-detail-panel .detail-heading h2 { min-width:0; flex:1; overflow-wrap:anywhere; }
 body.shared-readonly #place-detail-panel .detail-heading > button { flex-shrink:0; width:auto; min-width:64px; min-height:40px; font-size:13px; white-space:nowrap; padding:8px; }
