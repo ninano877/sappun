@@ -2627,7 +2627,7 @@ function render() {
   $(".hero h1").textContent = t.title;
   $(".hero .eyebrow").textContent = `${t.location} · ${t.start.slice(0, 4)}`;
   $(".hero p").textContent = `⌖ ${t.location} · ${t.start} — ${t.end} · ${people}명`;
-  $("title").textContent = t.title + " · 사뿐";
+  $("title").textContent = "사뿐";
   $(".tripbadge").textContent = state.days.length + "일의 여행";
   $("#summary").classList.add('trip-summary');
   $("#summary").innerHTML = tripSummaryHtml(t, f.total);
