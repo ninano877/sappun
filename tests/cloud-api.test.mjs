@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
-import worker, {passwordHash, shareSnapshot} from '../server/worker.mjs';
+import worker, {passwordHash, shareSnapshot, resolveGoogleMapsLink} from '../server/worker.mjs';
 
 // Real SQLite exercises D1 SQL and compare-and-swap, not a canned HTTP response mock.
 const sqlite = new DatabaseSync(':memory:');
@@ -29,6 +29,10 @@ async function request(path,{method='GET',body,token,requestOrigin=origin,ip='12
 }
 assert.equal((await request('/api/book')).status,401);
 assert.equal((await request('/api/book',{requestOrigin:'https://untrusted.example'})).status,403);
+assert.equal((await request('/api/book',{requestOrigin:'http://localhost:5500'})).status,403,'local map access never grants private book access');
+assert.equal((await request('/api/maps/resolve',{method:'OPTIONS',requestOrigin:'http://localhost:5500'})).status,204);
+assert.equal((await request('/api/maps/resolve',{method:'OPTIONS',requestOrigin:'null'})).status,204);
+assert.equal((await request('/api/maps/resolve',{method:'POST',body:{url:'http://127.0.0.1/secret'}})).status,400);
 assert.equal((await request('/api/book',{method:'OPTIONS'})).status,204);
 assert.equal((await request('/api/login',{method:'POST',body:{username:'owner',password:'wrong'}})).status,401);
 const login = await request('/api/login',{method:'POST',body:{username:'owner',password:'owner-test-password'}});
@@ -78,5 +82,17 @@ assert.equal(sqlite.prepare('SELECT count(*) AS n FROM shares').get().n,0);
 assert.equal((await request('/api/logout',{method:'POST',token:owner})).status,200);
 assert.equal((await request('/api/book',{token:owner})).status,401);
 assert.deepEqual(shareSnapshot(book.trips[0]).days[0][1].point,point);
+const longMap='https://www.google.com/maps/place/Test/data=!3d35!4d135';
+const resolved=await resolveGoogleMapsLink('https://maps.app.goo.gl/test',async()=>new Response(null,{status:302,headers:{location:longMap}}));
+assert.equal(resolved,longMap);
+let requests=0;
+await assert.rejects(()=>resolveGoogleMapsLink('https://maps.app.goo.gl/test',async()=>{requests++;return new Response(null,{status:302,headers:{location:'http://127.0.0.1/private'}});}),/Google 지도/);
+assert.equal(requests,1,'untrusted redirect is never fetched');
+await assert.rejects(()=>resolveGoogleMapsLink('https://google.com.evil.example/maps/place/Test'),/Google 지도/);
+await assert.rejects(()=>resolveGoogleMapsLink('https://user:pass@www.google.com/maps/place/Test'),/Google 지도/);
+await assert.rejects(()=>resolveGoogleMapsLink('https://maps.app.goo.gl/test',async()=>new Response(null,{status:200})),/공유 링크/);
+let redirects=0;
+await assert.rejects(()=>resolveGoogleMapsLink('https://maps.app.goo.gl/test',async()=>{redirects++;return new Response(null,{status:302,headers:{location:'https://maps.app.goo.gl/loop'}});}),/여러 번/);
+assert.equal(redirects,5,'redirect loops stop after five requests');
 sqlite.close();
 console.log('PASS: owner login, private sync, conflict protection, password sharing, read-only permissions, privacy, expiry, revocation, and rate limiting.');

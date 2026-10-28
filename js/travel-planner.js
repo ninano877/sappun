@@ -792,6 +792,8 @@ let overviewLines = [],
   lastOverviewKey = "";
 function decodeMapsLink(value) {
   let text = value.trim();
+  const pastedLink=text.match(/https?:\/\/[^\s<>"']+/i);
+  if(pastedLink)text=pastedLink[0];
   if (!/^https?:\/\//i.test(text)) return { query: text };
   let url;
   try {
@@ -849,7 +851,18 @@ function decodeMapsLink(value) {
 }
 async function searchMapInput(value) {
   let parsed = decodeMapsLink(value);
-  if (parsed.short) return parsed;
+  if (parsed.short) {
+    const apiBase=(window.SAPPUN_CLOUD?.apiBase || '').replace(/\/$/,'');
+    if (!apiBase) throw Error('공유 링크를 불러오지 못했어요. 장소 이름이나 긴 지도 주소를 입력해 주세요.');
+    const response=await fetch(apiBase+'/api/maps/resolve',{
+      method:'POST',credentials:'omit',referrerPolicy:'no-referrer',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({url:parsed.url}),signal:AbortSignal.timeout(15000)
+    });
+    const result=await response.json();
+    if (!response.ok) throw Error(result.error || '공유 링크를 불러오지 못했어요.');
+    parsed=decodeMapsLink(result.url);
+    if (parsed.short) throw Error('장소 링크를 확인해 주세요.');
+  }
   if (parsed.location)
     return [
       {
@@ -905,13 +918,6 @@ function installSearch() {
     try {
       let results = await searchMapInput($("#map-search-input").value);
       if (token !== mapSearchState.token) return;
-      if (results.short) {
-        $("#map-search-results").innerHTML =
-          '<p class="note">짧은 공유 링크는 이 파일에서 바로 풀 수 없어요. 아래 링크를 열고 브라우저 주소창의 긴 Google 지도 주소를 복사해 붙여넣어 주세요.</p><a target="_blank" rel="noopener" href="' +
-          esc(results.url) +
-          '">원본 지도 열기 ↗</a>';
-        return;
-      }
       mapSearchState.results = results;
       $("#map-search-results").innerHTML =
         results
@@ -930,7 +936,7 @@ function installSearch() {
               </div>`,
           )
           .join("") ||
-        '<p class="note">검색 결과가 없어요. 정확한 일본어 이름이나 주소로 검색해 주세요.</p>';
+        '<p class="note">검색 결과가 없어요. 정확한 장소 이름이나 주소로 검색해 주세요.</p>';
     } catch (e) {
       if (token === mapSearchState.token)
         $("#map-search-results").textContent = errorText(e);
@@ -2053,7 +2059,7 @@ ${input(
         "category",
         categories,
         original?.category || "관광",
-       )}${lodgingLinkFields(original)}${input("지역 · 쉼표로 구분", "region", (original?.regions || []).join(", "))}${input("지도 검색어 · 주소", "query", original?.query || "")}
+       )}${lodgingLinkFields(original)}${input("지도 검색어 · 주소", "query", original?.query || "")}
       <div class="tools"><button id="search-place" type="button">장소 검색</button></div>
       <div id="place-results"></div>
       ${input("Google 지도 링크", "maplink", original?.mapsUrl || "", "url")}<button
@@ -2088,7 +2094,7 @@ ${esc(original?.note || "")}</textarea
         category: val("category"),
         query: val("query").trim() || val("name").trim(),
         note: val("note"),
-        regions: val("region").split(",").map(value=>value.trim()).filter(Boolean),
+        regions: original?.regions || [],
 
       };
       if (!record.name) return false;
@@ -2112,10 +2118,6 @@ ${esc(original?.note || "")}</textarea
     { closeButton: true },
   );
   $("#search-place").onclick = async () => {
-    if (!gmap) {
-      toast("지도 키를 연결한 뒤 검색해 주세요.", "warning");
-      return;
-    }
     $("#place-results").textContent = "검색 중…";
     try {
       let results = await searchMapInput(val("query") || val("name"));
@@ -2146,18 +2148,21 @@ ${esc(original?.note || "")}</textarea
     }
   };
   $("#apply-maplink").onclick = async () => {
+    const button=$("#apply-maplink");button.disabled=true;
+    $("#maplink-feedback").textContent='링크에서 장소를 확인하고 있어요…';
     try {
       let list = await searchMapInput(val("maplink"));
       if (!Array.isArray(list))
-        throw Error("짧은 공유 링크는 원본을 열고 긴 주소를 붙여넣어 주세요.");
+        throw Error("장소 링크를 확인해 주세요.");
       if (!list.length) throw Error("위치를 찾지 못했어요.");
       chosen = list[0];
+      if(chosen.url)$("#f-maplink").value=chosen.url;
       $("#f-query").value = chosen.address || chosen.lat + "," + chosen.lng;
       if (!val("name").trim()) $("#f-name").value = chosen.name;
       $("#maplink-feedback").textContent = "위치 적용: " + chosen.name;
     } catch (e) {
       $("#maplink-feedback").textContent = errorText(e);
-    }
+    } finally {button.disabled=false;}
   };
 }
 // Main map search uses the same field IDs as this form; selected coordinates are retained.

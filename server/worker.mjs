@@ -72,10 +72,31 @@ async function body(request) {
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
   try { return JSON.parse(new TextDecoder().decode(bytes)); } catch { fail(400, '요청 내용을 확인해 주세요.'); }
 }
-async function throttle(env, key, now) {
+async function throttle(env, key, now, limit = 10) {
   const bucket = `${await digest(key)}:${Math.floor(now / 900)}`;
   const row = await env.DB.prepare('INSERT INTO attempts(bucket,count,expires_at) VALUES (?,1,?) ON CONFLICT(bucket) DO UPDATE SET count=count+1 RETURNING count').bind(bucket, now + 1800).first();
-  if (row.count > 10) fail(429, '여러 번 시도했어요. 15분 뒤 다시 입력해 주세요.');
+  if (row.count > limit) fail(429, '여러 번 시도했어요. 15분 뒤 다시 입력해 주세요.');
+}
+function allowedMapsUrl(value) {
+  let url;try {url=new URL(value);}catch {fail(400,'Google 지도 공유 링크를 확인해 주세요.');}
+  if(url.protocol!=='https:'||url.username||url.password||url.port)fail(400,'Google 지도 공유 링크를 확인해 주세요.');
+  const host=url.hostname.toLowerCase();
+  if(host==='maps.app.goo.gl')return url;
+  if(host==='goo.gl'&&/^\/maps(?:\/|$)/.test(url.pathname))return url;
+  if(['google.com','www.google.com','maps.google.com','google.co.jp','www.google.co.jp','maps.google.co.jp','google.co.kr','www.google.co.kr','maps.google.co.kr'].includes(host)&&(/^\/maps(?:\/|$)/.test(url.pathname)||host.startsWith('maps.')))return url;
+  fail(400,'Google 지도 장소 링크만 가져올 수 있어요.');
+}
+export async function resolveGoogleMapsLink(value, fetcher = fetch) {
+  if(typeof value!=='string'||value.length>4096)fail(400,'Google 지도 공유 링크를 확인해 주세요.');
+  let url=allowedMapsUrl(value);
+  for(let index=0;index<5;index++) {
+    if(!['maps.app.goo.gl','goo.gl'].includes(url.hostname))return url.href;
+    const response=await fetcher(url.href,{redirect:'manual',headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36'},signal:AbortSignal.timeout(2500)});
+    const location=response.headers.get('location');await response.body?.cancel();
+    if(response.status<300||response.status>=400||!location)fail(422,'이 공유 링크에서 장소를 찾지 못했어요. Google 지도의 장소 공유 링크를 다시 복사해 주세요.');
+    url=allowedMapsUrl(new URL(location,url).href);
+  }
+  fail(422,'공유 링크가 여러 번 연결돼요. 장소 이름이나 긴 지도 주소를 입력해 주세요.');
 }
 async function bearer(request) {
   const token = request.headers.get('Authorization')?.match(/^Bearer ([a-f0-9]{64})$/)?.[1];
@@ -97,6 +118,11 @@ async function liveShare(env, id, now) {
 async function route(request, env, now) {
   const path = new URL(request.url).pathname;
   const method = request.method;
+  if (path === '/api/maps/resolve' && method === 'POST') {
+    await throttle(env, `map-link:${request.headers.get('CF-Connecting-IP') || 'unknown'}`, now, 60);
+    const input=await body(request);
+    return {url:await resolveGoogleMapsLink(input.url)};
+  }
   if (path === '/api/login' && method === 'POST') {
     await throttle(env, `login:${request.headers.get('CF-Connecting-IP') || 'unknown'}`, now);
     const input = await body(request);
@@ -173,9 +199,11 @@ export default {
   async fetch(request, env, context) {
     const origin = request.headers.get('Origin');
     const headers = {'Content-Type':'application/json; charset=utf-8', 'Cache-Control':'no-store', 'Vary':'Origin', 'X-Content-Type-Options':'nosniff'};
-    if (origin === env.APP_ORIGIN) Object.assign(headers, {'Access-Control-Allow-Origin':origin, 'Access-Control-Allow-Methods':'GET,POST,PUT,DELETE,OPTIONS', 'Access-Control-Allow-Headers':'Content-Type,Authorization', 'Access-Control-Max-Age':'600'});
+    const localMapLink = new URL(request.url).pathname === '/api/maps/resolve' && (origin === 'null' || /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(origin || ''));
+    const allowedOrigin = origin === env.APP_ORIGIN || localMapLink;
+    if (allowedOrigin) Object.assign(headers, {'Access-Control-Allow-Origin':origin, 'Access-Control-Allow-Methods':localMapLink?'POST,OPTIONS':'GET,POST,PUT,DELETE,OPTIONS', 'Access-Control-Allow-Headers':'Content-Type,Authorization', 'Access-Control-Max-Age':'600'});
     if (!env.APP_ORIGIN || !env.DB || !env.OWNER_PASSWORD_HASH || !env.OWNER_USERNAME) return new Response(JSON.stringify({error:'서버 설정을 완료해 주세요.'}), {status:503, headers});
-    if (origin !== env.APP_ORIGIN) return new Response(JSON.stringify({error:'허용되지 않은 접속 주소예요.'}), {status:403, headers});
+    if (!allowedOrigin) return new Response(JSON.stringify({error:'허용되지 않은 접속 주소예요.'}), {status:403, headers});
     if (request.method === 'OPTIONS') return new Response(null, {status:204, headers});
     try { return new Response(JSON.stringify(await route(request, env, Math.floor(Date.now()/1000))), {headers}); }
     catch (error) { return new Response(JSON.stringify({error:error.status ? error.message : '서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.'}), {status:error.status || 500, headers}); }

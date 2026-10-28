@@ -5641,6 +5641,27 @@ dialog.mobile-day-picker::backdrop { background: #191f2866; backdrop-filter: blu
 .trip-member-photo { width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: #eaf2ff; color: #3c6ca8; overflow: hidden; font-size: 18px; font-weight: 700; }
 .trip-member-name-field { flex: 1; min-width: 0; margin: 0; }
 .trip-member-row > button { padding: 6px; font-size: 11px; flex-shrink: 0; }
+
+/* Keep the rounded modal shell still; scroll only its inset content. */
+#modal { width: min(590px,calc(100vw - 32px)); max-height: 90dvh; padding: 0; overflow: hidden; box-sizing: border-box; border: 0; border-radius: 24px; background: #fff; }
+#modal[open] { display: flex; flex-direction: column; }
+#modal > #form { display: flex; flex-direction: column; min-height: 0; max-height: 90dvh; width: 100%; margin: 0; overflow: hidden; }
+#modal #formbody { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 28px; scrollbar-width: thin; scrollbar-color: #cdd3dc transparent; }
+#modal #formbody::-webkit-scrollbar { width: 5px; }
+#modal #formbody::-webkit-scrollbar-track { background: transparent; margin: 22px 0; }
+#modal #formbody::-webkit-scrollbar-thumb { border-radius: 99px; background: #cdd3dc; }
+#modal .dialogactions { flex-shrink: 0; margin: 0; padding: 16px 28px; background: #fff; border-top: 1px solid #edf0f4; }
+#modal .modal-close,#modal .modal-close:hover { z-index: 3; top: 20px; right: 20px; width: 32px; height: 32px; border-radius: 50%; background: #fff; color: #6b7684; font-size: 23px; }
+@media(max-width:600px) {
+  #modal { width: calc(100vw - 24px); max-height: 92dvh; border-radius: 20px; }
+  #modal > #form { max-height: 92dvh; }
+  #modal #formbody { padding: 22px 20px; }
+  #modal .dialogactions { padding: 12px 20px max(12px,env(safe-area-inset-bottom)); }
+  #modal .modal-close,#modal .modal-close:hover { top: 14px; right: 14px; }
+}
+dialog.cloud-dialog,dialog#attachment-preview-dialog,dialog#schedule-map-dialog { scrollbar-width: thin; scrollbar-color: #cdd3dc transparent; }
+dialog.cloud-dialog::-webkit-scrollbar,dialog#attachment-preview-dialog::-webkit-scrollbar,dialog#schedule-map-dialog::-webkit-scrollbar { width: 5px; }
+dialog.cloud-dialog::-webkit-scrollbar-thumb,dialog#attachment-preview-dialog::-webkit-scrollbar-thumb,dialog#schedule-map-dialog::-webkit-scrollbar-thumb { border-radius: 99px; background: #cdd3dc; }
 @media(max-width:760px) {
   #summary.trip-summary { gap: 10px; }
   #summary.trip-summary .stat { min-height: 138px; padding: 16px; gap: 10px; }

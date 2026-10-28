@@ -29,6 +29,7 @@ jobs:
         run: |
           node tests/cloud-api.test.mjs
           node tests/cloud-client.test.mjs
+          node tests/map-share-links.test.cjs
       - name: Prepare app files
         run: node scripts/build-pages.mjs
       - name: Check public files for private data and credentials

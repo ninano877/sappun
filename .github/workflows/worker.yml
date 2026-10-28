@@ -23,6 +23,7 @@ jobs:
         run: |
           node tests/cloud-api.test.mjs
           node tests/cloud-client.test.mjs
+          node tests/map-share-links.test.cjs
       - name: Apply database schema
         run: npx wrangler@4 d1 execute sappun --remote --file server/schema.sql --config server/wrangler.jsonc
         env:
