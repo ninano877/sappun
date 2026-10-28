@@ -2840,6 +2840,9 @@ function highlightMapStop(stopId) {
 }
 function updateMapPinSelection() {
   const stopId = highlightedMapSelection?.tripId === currentTripId ? highlightedMapSelection.stopId : null;
+  document.querySelectorAll('#stops .map-stop-card[data-stop-id]').forEach(card=>{
+    card.classList.toggle('is-map-following',card.dataset.stopId===stopId);
+  });
   for (const marker of markers) {
     const pin = marker.sappunPin;
     if (!pin) continue;

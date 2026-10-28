@@ -5672,3 +5672,4 @@ dialog.cloud-dialog::-webkit-scrollbar-thumb,dialog#attachment-preview-dialog::-
 }
 
 .lodging-link-field[hidden] { display:none!important; }
+#stops .map-stop-card.is-map-following { border-color:#B8D4FC!important; }
