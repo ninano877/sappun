@@ -5670,3 +5670,5 @@ dialog.cloud-dialog::-webkit-scrollbar-thumb,dialog#attachment-preview-dialog::-
   .trip-traveler-avatar { width: 26px; height: 26px; flex-basis: 26px; font-size: 11px; }
   .trip-travelers > span { font-size: 11px; }
 }
+
+.lodging-link-field[hidden] { display:none!important; }

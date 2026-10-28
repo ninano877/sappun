@@ -504,15 +504,28 @@ function lodgingLinkFields(stop, prefix='') {
   const options=state.days.flatMap((stops,d)=>stops.filter(candidate=>candidate.id!==stop?.id&&candidate.category==='숙소'&&!candidate.lodgingStopId).map(candidate=>({candidate,d})))
     .sort((a,b)=>Number(scheduleEndDate(b.candidate,b.d)>(b.candidate.startDate||tripDate(b.d)))-Number(scheduleEndDate(a.candidate,a.d)>(a.candidate.startDate||tripDate(a.d))));
   if(!options.length)return '';
-  return '<label class="lodging-link-field">같은 숙소 연결<select id="f-'+prefix+'lodging"><option value="">연결 안 함 · 직접 입력</option>'+options.map(({candidate,d})=>'<option value="'+esc(candidate.id)+'" '+(stop?.lodgingStopId===candidate.id?'selected':'')+'>'+esc(candidate.name)+' · '+(candidate.startDate||tripDate(d)).slice(5).replace('-','/')+' ~ '+esc(scheduleEndDate(candidate,d).slice(5).replace('-','/'))+'</option>').join('')+'</select><small>숙소 복귀·취침 일정에 기존 숙소를 연결해요. 시간은 이 일정의 시간을 유지합니다.</small></label>';
+  return '<label class="lodging-link-field"'+(stop?.category==='숙소'?'':' hidden')+'>같은 숙소 연결<select id="f-'+prefix+'lodging"><option value="">연결 안 함 · 직접 입력</option>'+options.map(({candidate,d})=>'<option value="'+esc(candidate.id)+'" '+(stop?.lodgingStopId===candidate.id?'selected':'')+'>'+esc(candidate.name)+' · '+(candidate.startDate||tripDate(d)).slice(5).replace('-','/')+' ~ '+esc(scheduleEndDate(candidate,d).slice(5).replace('-','/'))+'</option>').join('')+'</select><small>숙소 복귀·취침 일정에 기존 숙소를 연결해요. 시간은 이 일정의 시간을 유지합니다.</small></label>';
 }
 function applyLodgingLink(stop, id) {
-  if(!id){delete stop.lodgingStopId;return;}
+  if(!id||stop.category!=='숙소'){delete stop.lodgingStopId;return;}
   const target=state.days.flat().find(candidate=>candidate.id===id&&candidate.id!==stop.id&&candidate.category==='숙소'&&!candidate.lodgingStopId);
   if(!target)throw Error('연결할 숙소를 다시 선택해 주세요.');
   stop.lodgingStopId=id;stop.category='숙소';stop.query=target.query||'';stop.mapsUrl=target.mapsUrl||'';
   stop.chosenPlace=target.placeQuery===target.query?target.chosenPlace:undefined;stop.placeQuery=stop.chosenPlace?stop.query:undefined;
 }
+function updateLodgingVisibility(prefix) {
+  const category=document.getElementById('f-'+prefix+'category'),link=document.getElementById('f-'+prefix+'lodging');
+  if(!category||!link)return;
+  const show=category.value==='숙소';link.closest('.lodging-link-field').hidden=!show;
+  if(!show){link.value='';const query=document.getElementById('f-'+prefix+'query');if(query)query.readOnly=false;}
+}
+document.addEventListener('click',event=>{
+  const button=event.target.closest('[data-value-target="f-category"],[data-value-target="f-detailcategory"]');
+  if(button)queueMicrotask(()=>updateLodgingVisibility(button.dataset.valueTarget==='f-detailcategory'?'detail':''));
+});
+document.addEventListener('change',event=>{
+  if(event.target.id==='f-category'||event.target.id==='f-detailcategory')updateLodgingVisibility(event.target.id==='f-detailcategory'?'detail':'');
+});
 document.addEventListener('change',event=>{
   const prefix=event.target.id==='f-detaillodging'?'detail':event.target.id==='f-lodging'?'':null;
   if(prefix===null)return;
@@ -2037,7 +2050,6 @@ ${input(
         "text",
         'required maxlength="150"',
       )}
-      <p class="note">한 일정에는 한 장소를 적어 주세요. 예: ‘인천공항’, ‘간사이공항’을 각각 추가하고 두 장소 사이에 ‘항공’ 이동을 넣어요.</p>
       ${scheduleDateFields("", day, original)}
       <details class="optional-place-time" ${original && hasStopTime(original) ? "open" : ""}><summary>시간 추가 · 선택</summary>
       <div class="fields">
@@ -3935,10 +3947,6 @@ function reorderScheduleStop(d, stopId, boundary, targetDay = d) {
 }
 function installScheduleReordering() {
   const host = $("#stops");
-  const help = document.createElement("p");
-  help.id = "schedule-reorder-help"; help.className = "schedule-reorder-help";
-  help.textContent = "⋮⋮ 핸들을 잡고 원하는 위치로 옮겨요. 다른 날짜로도 옮길 수 있어요.";
-  host.before(help);
   const live = document.createElement("div");
   live.className = "visually-hidden"; live.setAttribute("role", "status"); live.setAttribute("aria-live", "polite"); host.after(live);
   let dragging = null, frame = 0;

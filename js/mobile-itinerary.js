@@ -34,8 +34,13 @@ function mobileScheduleCandidate(cards, focusY, viewportBottom) {
     const listRect=document.querySelector('#stops').getBoundingClientRect();
     const header=document.querySelector('body > header');
     const headerBottom=header?Math.max(0,Math.min(header.getBoundingClientRect().bottom,100)):0;
-    const focusY=media.matches?mapRect.bottom+12:Math.max(headerBottom+24,listRect.top+12,100);
-    const card = mobileScheduleCandidate(document.querySelectorAll('#stops .map-stop-card'), focusY, Math.min(window.innerHeight,listRect.bottom));
+    const visibleTop=Math.max(headerBottom+24,listRect.top,0),visibleBottom=Math.min(window.innerHeight,listRect.bottom);
+    if(visibleBottom<=visibleTop)return;
+    const focusY=media.matches?mapRect.bottom+12:(visibleTop+visibleBottom)/2;
+    const cards=[...document.querySelectorAll('#stops .map-stop-card')];
+    const card = media.matches?mobileScheduleCandidate(cards,focusY,visibleBottom):cards.filter(node=>{const r=node.getBoundingClientRect();return r.bottom>visibleTop&&r.top<visibleBottom;}).sort((a,b)=>{
+      const distance=node=>{const r=node.getBoundingClientRect();return focusY<r.top?r.top-focusY:focusY>r.bottom?focusY-r.bottom:0;};return distance(a)-distance(b);
+    })[0];
     if (!card) return;
     const d = Number(card.closest('[data-group-day]').dataset.groupDay);
     const index = Number(card.dataset.cardIndex), stop = state.days[d]?.[index];
