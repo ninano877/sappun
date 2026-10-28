@@ -5566,8 +5566,6 @@ dialog.mobile-day-picker::backdrop { background: #191f2866; backdrop-filter: blu
 .segment-route-search:not([open]) { padding: 10px 14px; background: #FFFFFF; }
 
 /* The place currently being read gets the visual priority on the map. */
-.named-map-pin.is-muted-map-pin { opacity: .3; }
-.named-map-pin.is-muted-map-pin .pin-place-name { display: none; }
 .named-map-pin.is-selected-map-pin { opacity: 1; z-index: 100000; }
 .named-map-pin.is-selected-map-pin .pin-head {
   width: 36px;

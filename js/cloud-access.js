@@ -350,7 +350,7 @@
       for (const marker of markers) {
         const active = marker === target;
         if (marker.pin.classList.contains('active') !== active) marker.pin.classList.toggle('active',active);
-        marker.pin.style.opacity = target && !active ? '.35' : '1'; marker.object.zIndex = active ? 100000 : marker.stopIndex;
+        marker.object.zIndex = active ? 100000 : marker.stopIndex;
       }
       if (target && pan) map.panTo(target.object.position);
     }

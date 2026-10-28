@@ -2356,6 +2356,7 @@ async function openScheduleMap(d,index=null){
   if(d!==null&&!state.days[d])return;
   const tripId=currentTripId,request=++scheduleMapRequest;closeDetail();if(d!==null)day=d;selected=Number.isInteger(index)?index:0;
   trip().workspaceView='itinerary';trip().viewMode='map';mapDisplay().selectedDay=d;mapDisplay().showPins=true;
+  if(index===null)highlightMapStop(null);
   requestedMapFocus=null;mapViewportSelection='';allMapSignature='';save();render();
   requestAnimationFrame(()=>document.querySelector('.mapcolumn')?.scrollIntoView?.({block:'start',behavior:'smooth'}));
   const stop=d!==null&&Number.isInteger(index)?state.days[d][index]:null;
@@ -2832,7 +2833,6 @@ function updateMapPinSelection() {
     if (!pin) continue;
     const visit = pin.visits.find(visit => visit.stop.id === stopId);
     pin.badge.classList.toggle('is-selected-map-pin',Boolean(visit));
-    pin.badge.classList.toggle('is-muted-map-pin',Boolean(stopId && !visit));
     pin.badge.setAttribute('aria-pressed',String(Boolean(visit)));
     marker.zIndex = visit ? 100000 : pin.baseZIndex;
     const selectedStopId = visit?.stop.id || null;
