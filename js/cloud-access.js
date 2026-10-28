@@ -286,15 +286,31 @@
     let payload = await api('/api/shared/'+shareId,{auth:shareToken});
     if(payload.trip.planner){
       window.SappunSharedFiles={files:payload.files||[],open:async(file,mode)=>{
-        const popup=mode==='open'?window.open('about:blank','_blank'):null;if(popup)popup.opener=null;
+        let panel=null,viewer=null,download=null,url='';
+        const save=()=>{const anchor=document.createElement('a');anchor.href=url;anchor.download=file.name;document.body.append(anchor);anchor.click();anchor.remove();};
+        if(mode!=='download'){
+          panel=dialog(file.name);panel.id='shared-file-preview';
+          viewer=el('div','shared-file-viewer','파일을 불러오는 중…');viewer.setAttribute('role','status');
+          download=button('다운로드',save);download.disabled=true;
+          const actions=el('div','shared-file-preview-actions');actions.append(download);panel.append(viewer,actions);
+          panel.addEventListener('close',()=>{if(url)URL.revokeObjectURL(url);},{once:true});
+        }
         try{
           const response=await fetch(apiBase+'/api/shared/'+shareId+'/files/'+encodeURIComponent(file.id),{headers:{Authorization:'Bearer '+shareToken},credentials:'omit',cache:'no-store'});
           if(!response.ok)throw Error('파일을 열지 못했어요. 공유 상태를 확인해 주세요.');
-          const raw=await response.blob(),safe=/^(application\/pdf|image\/(png|jpeg|webp|gif)|text\/plain|video\/mp4|audio\/(mpeg|wav))$/.test(raw.type);
-          const url=URL.createObjectURL(new Blob([raw],{type:safe?raw.type:'application/octet-stream'}));
-          if(popup&&safe)popup.location.href=url;else{popup?.close();const anchor=document.createElement('a');anchor.href=url;anchor.download=file.name;document.body.append(anchor);anchor.click();anchor.remove();}
-          setTimeout(()=>URL.revokeObjectURL(url),600000);
-        }catch(error){popup?.close();toast(message(error));}
+          const raw=await response.blob(),ext=file.name.split('.').pop().toLowerCase();
+          const mime=raw.type&&!['application/octet-stream',''].includes(raw.type)?raw.type:({pdf:'application/pdf',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',gif:'image/gif',txt:'text/plain',mp4:'video/mp4',mp3:'audio/mpeg'}[ext]||'application/octet-stream');
+          const safe=/^(application\/pdf|image\/(png|jpeg|webp|gif)|text\/plain|video\/mp4|audio\/(mpeg|wav))$/.test(mime);
+          url=URL.createObjectURL(new Blob([raw],{type:safe?mime:'application/octet-stream'}));
+          if(mode==='download'){save();setTimeout(()=>URL.revokeObjectURL(url),60000);return;}
+          if(!panel.isConnected){URL.revokeObjectURL(url);return;}
+          download.disabled=false;viewer.replaceChildren();
+          if(/^image\/(png|jpeg|webp|gif)$/.test(mime)){const image=el('img');image.src=url;image.alt=file.name;viewer.append(image);}
+          else if(mime==='application/pdf'){const frame=el('iframe');frame.src=url;frame.title=file.name+' PDF 미리보기';viewer.append(frame,el('p','cloud-help','미리보기가 표시되지 않는 기기에서는 다운로드해 확인해 주세요.'));}
+          else if(mime==='text/plain'){const text=el('pre');text.textContent=await raw.text();viewer.append(text);}
+          else if(/^(video|audio)\//.test(mime)&&safe){const media=el(mime.startsWith('video')?'video':'audio');media.src=url;media.controls=true;viewer.append(media);}
+          else viewer.append(el('p','','이 파일 형식은 미리보기를 지원하지 않아요. 다운로드해서 확인해 주세요.'));
+        }catch(error){if(viewer)viewer.textContent=message(error);else toast(message(error));}
       }};
       SappunSharedPlanner.open(payload,shareId);
       const poll=setInterval(async()=>{

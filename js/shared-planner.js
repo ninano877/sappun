@@ -2,7 +2,7 @@
 const SappunSharedPlanner = (() => {
   let options={},installed=false,displayedResource=null;
   function fileRows(files) {
-    return files.map(file=>'<div class="shared-file-row"><span>📄 '+esc(file.name)+'<small>'+Math.ceil(file.size/1024)+' KB</small></span><button type="button" data-shared-file="'+esc(file.id)+'" data-shared-file-mode="open">열기 ↗</button><button type="button" data-shared-file="'+esc(file.id)+'" data-shared-file-mode="download">다운로드</button></div>').join('');
+    return files.map(file=>'<div class="shared-file-row"><span>📄 '+esc(file.name)+'<small>'+Math.ceil(file.size/1024)+' KB</small></span><button type="button" data-shared-file="'+esc(file.id)+'" data-shared-file-mode="preview">미리보기</button><button type="button" data-shared-file="'+esc(file.id)+'" data-shared-file-mode="download">다운로드</button></div>').join('');
   }
   const allowed='[data-workspace-view],[data-dayfold],[data-mapday],[data-mobile-day],[data-mobile-day-picker],[data-day-picker-value],[data-day-picker-close],[data-schedule-map-day],.schedule-day-map,[data-mapjump],[data-card-map],[data-detail-map],#show-all-map,#toggle-map-pins,#close-place-detail,[data-shared-close],#schedule-map-dialog .schedule-map-heading button,[data-ledger-clear],.map-pin,.map-travel-label,.gm-control-active,.gm-style button';
   const edits='[data-delete],[data-add],[data-add-place],[data-edit-budget],[data-edit-travelers],[data-tabs-edit],.schedule-drag-handle,.card-inline-tools,.map-searchbox,.temp-location-lookup,#mapsetup,#mapsetup-global,#backup,#restore,#settings,#go-home,#upload,#expenseadd,#dashboard-common,#list-rate,[data-common-expense],[data-prep-add],[data-prep-delete],[data-resource-add],[data-library-upload],[data-resource-delete],.trip-travelers-edit';
@@ -48,6 +48,7 @@ const SappunSharedPlanner = (() => {
     window.addEventListener('click',event=>{
       if(!document.body.classList.contains('shared-readonly'))return;
       const target=event.target;
+      if(target.closest('#shared-file-preview'))return;
       const file=target.closest('[data-shared-file]');if(file){event.preventDefault();event.stopImmediatePropagation();const record=window.SappunSharedFiles?.files.find(item=>item.id===file.dataset.sharedFile);if(record)window.SappunSharedFiles.open(record,file.dataset.sharedFileMode);return;}
       const preview=target.closest('[data-media-mode]');if(preview){event.preventDefault();event.stopImmediatePropagation();const show=preview.dataset.mediaMode==='preview';preview.closest('figure').querySelectorAll('.restored-link-preview,img,video,audio,object').forEach(node=>node.style.display=show?'':'none');preview.dataset.mediaMode=show?'mention':'preview';preview.textContent=show?'미리보기 접기':'미리보기 보기';return;}
       if(target.closest('[data-shared-close]')){event.preventDefault();event.stopImmediatePropagation();displayedResource=null;closeDetail();return;}
