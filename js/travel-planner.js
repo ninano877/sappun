@@ -583,7 +583,11 @@ function extractRoute(r, mode) {
     fare:mode==='도보'?{value:0,currency:'JPY'}:routeMoney(r.travelAdvisory?.transitFare),
     summary:r.description||steps.filter(s=>s.line).map(s=>s.line).join(' → '),steps,path:r.path||[],warnings:r.warnings||[],fetched:Date.now()};
 }
+function blocksTransitLookup(a,b,mode=a.mode) {
+  return mode==='대중교통'&&[a.query,b?.query,savedPoint(a)?.address,b&&savedPoint(b)?.address].some(text=>/日本|\bJapan\b|일본/i.test(text||''));
+}
 async function lookupSegmentRoute(d, a, b, mode = a.mode, options = {}) {
+  if(blocksTransitLookup(a,b,mode))throw Error('이 구간은 소요 시간을 직접 입력해 주세요.');
   if (!state.settings.key || !gmap) throw Error("먼저 헤더의 지도 연결에서 Google 지도를 연결해 주세요.");
   if (!["대중교통", "도보", "택시"].includes(mode))
     throw Error(mode === "없음" ? "구간 없음을 선택했어요." : "이 이동 수단은 Google 경로를 제공하지 않아요. 소요 시간을 직접 입력해 주세요.");
@@ -596,6 +600,7 @@ async function lookupSegmentRoute(d, a, b, mode = a.mode, options = {}) {
       throw Error("이 여행 날짜는 Google 대중교통 조회 가능 기간(과거 7일~미래 100일) 밖이에요. Google 길찾기에서 확인하거나 시간을 직접 입력해 주세요.");
   }
   const [origin, destination] = await Promise.all([resolvePlace(a), resolvePlace(b)]);
+  if(mode==='대중교통'&&/日本|\bJapan\b|일본/i.test([origin.address,destination.address].join(' ')))throw Error('이 구간은 소요 시간을 직접 입력해 주세요.');
   const { Route } = await google.maps.importLibrary("routes");
   const request = {
     origin: { lat: origin.lat, lng: origin.lng }, destination: { lat: destination.lat, lng: destination.lng },
@@ -615,6 +620,7 @@ async function getLeg(d, i, force = false, geometryOnly = false) {
     b = state.days[d][i + 1],
     sig = routeSignature(d, i);
   if (!b || a.noTravel || (a.manualRoute && !geometryOnly)) return;
+  if(blocksTransitLookup(a,b))return;
   if (routeJobs.has(sig)) return routeJobs.get(sig);
   if (!force && currentRoute(d, i)) return;
   if (["투어 버스", "항공", "기타"].includes(a.mode)) {
@@ -2395,7 +2401,7 @@ function segmentBlock(d, i) {
       <div class="segment-menu" role="group" aria-label="이동 수단과 경로 설정">
         <p class="segment-menu-heading">이동 수단</p>
         ${["도보","대중교통","택시"].map(mode => `<button type="button" data-segment-mode="${mode}" aria-pressed="${entered && s.mode === mode}">${transportIcon[mode]} ${mode}${entered && s.mode === mode ? '<span class="segment-check">✓</span>' : ""}</button>`).join("")}
-        <button type="button" data-segment-lookup>⌕ Google 소요 시간 조회</button>
+        ${!blocksTransitLookup(s,next)?'<button type="button" data-segment-lookup>⌕ Google 소요 시간 조회</button>':''}
         <a class="segment-external-directions" href="https://www.google.com/maps/dir/?api=1&amp;origin=${encodeURIComponent(s.query||s.name)}&amp;destination=${encodeURIComponent(next.query||next.name)}&amp;travelmode=${s.mode==='도보'?'walking':s.mode==='택시'?'driving':'transit'}" target="_blank" rel="noopener">↗ Google 지도에서 길찾기</a>
         <div class="segment-menu-divider"></div>
         <button type="button" data-segment-settings>◷ 시간·교통비 직접 입력</button>
@@ -2655,7 +2661,7 @@ function render() {
   $(".layout").classList.toggle("list-layout", list);
   $("#daylabel").textContent = t.start + " — " + t.end;
   $("#daytitle").textContent = list ? "여행 시간표" : "전체 여행 일정";
-  if(!list){$("#daytitle").insertAdjacentHTML("beforeend",'<button type="button" id="show-all-map" aria-pressed="'+(mapDisplay().selectedDay===null)+'">전체</button><button type="button" class="temp-location-lookup" id="search-all-map-locations" '+(locationLoadBusy?'disabled':'')+'>'+(locationLoadBusy?'검색 중…':'⌕ 전체 일정 Google 위치 검색')+'</button>');$("#show-all-map").onclick=()=>openScheduleMap(null);$('#search-all-map-locations').onclick=()=>{mapDisplay().selectedDay=null;mapDisplay().showPins=true;requestedMapFocus=null;allMapSignature='';save();loadSelectedDays(state.days.map((_,i)=>i));}; }
+  if(!list){$("#daytitle").insertAdjacentHTML("beforeend",'<button type="button" id="show-all-map" aria-pressed="'+(mapDisplay().selectedDay===null)+'">전체</button><button type="button" class="temp-location-lookup" id="search-all-map-locations" '+(locationLoadBusy?'disabled':'')+'>'+(locationLoadBusy?'검색 중…':'⌕ 전체 위치·이동시간 조회')+'</button>');$("#show-all-map").onclick=()=>openScheduleMap(null);$('#search-all-map-locations').onclick=()=>{mapDisplay().selectedDay=null;mapDisplay().showPins=true;requestedMapFocus=null;allMapSignature='';save();loadSelectedDays(state.days.map((_,i)=>i),true);}; }
   $("#filters").hidden = true;
   $("#stops").innerHTML = actualSchedule(list);
   document.querySelectorAll(".day-cost").forEach((el) => el.remove());
@@ -2921,12 +2927,12 @@ async function refreshGoogleSegments(indices){
   const tripId=currentTripId;let refreshed=0,failed=0;
   for(const d of indices){const stops=state.days[d];for(let i=0;i<stops.length-1;i++){
     if(tripId!==currentTripId||homeOpen)return {refreshed,failed};
-    const stop=stops[i],next=stops[i+1];if(stop.manualRoute||stop.noTravel||!['도보','택시','대중교통'].includes(stop.mode))continue;
+    const stop=stops[i],next=stops[i+1];if(stop.noTravel||!hasSegment(stop)||blocksTransitLookup(stop,next)||!['도보','택시','대중교통'].includes(stop.mode)||(stop.manualRoute&&Number.isFinite(stop.minutes)))continue;
     const known=stop.googleRouteRequested||currentRoute(d,i)?.status==='ok'||(stop.manualRoute===false&&Number.isFinite(stop.minutes));if(!known)continue;
     const signature=routeSignature(d,i),mode=stop.mode;
     try{const result=await lookupSegmentRoute(d,stop,next,mode,{departureBasis:stop.googleRouteDepartureBasis||'schedule'});
-      if(tripId!==currentTripId||state.days[d][i]!==stop||state.days[d][i+1]!==next||stop.mode!==mode||signature!==routeSignature(d,i)||stop.manualRoute)continue;
-      routeResults.set(signature,result);stop.minutes=result.minutes;stop.googleRouteRequested=true;syncFollowingSchedule(d,i,result.minutes);refreshed++;
+      if(tripId!==currentTripId||state.days[d][i]!==stop||state.days[d][i+1]!==next||stop.mode!==mode||signature!==routeSignature(d,i)||(stop.manualRoute&&Number.isFinite(stop.minutes)))continue;
+      routeResults.set(signature,result);stop.minutes=result.minutes;stop.manualRoute=false;stop.googleRouteRequested=true;syncFollowingSchedule(d,i,result.minutes);refreshed++;
     }catch(error){failed++;}
   }}return {refreshed,failed};
 }
@@ -3012,9 +3018,10 @@ function leg(i) {
     resultBox.hidden = true; resultBox.innerHTML = "";
     const mode = val("mode"), supported = ["대중교통", "도보", "택시"].includes(mode);
     $('#segment-expense-fields').hidden=mode==='도보'||mode==='없음';
-    search.hidden=!supported;
+    search.hidden=!supported||blocksTransitLookup(s,next,mode);
     search.disabled = !supported||search.hidden; search.textContent = "경로·소요 시간 조회";
     external.hidden = !supported; external.href = route({ ...s, mode }, next);
+    status.hidden=blocksTransitLookup(s,next,mode);
     status.textContent = supported ? mode + " 기준 · " + (hasStopTime(s) ? stopEnd(s) + " 출발" : "장소 사이") + " 경로를 조회해요." : mode === "없음" ? "이 구간은 표시하지 않아요." : "예약한 교통편의 소요 시간을 직접 입력해 주세요.";
     status.classList.toggle("warning", !supported);
   };
@@ -4184,7 +4191,8 @@ document.addEventListener("click", async event => {
   const previousMode=stop.mode,previousMinutes=stop.minutes,previousManual=stop.manualRoute;
   stop.mode = mode; stop.noTravel = false; stop.segmentEnabled = true; stop.manualRoute = false; stop.minutes = mode===previousMode?previousMinutes:null;
   routeResults.delete(routeSignature(d, index)); allMapSignature = ""; save(); render();
-  if (button.dataset.segmentMode) { stop.manualRoute = true; stop.googleRouteRequested = false; save(); return; }
+  if ((button.dataset.segmentMode&&mode!=='도보')||blocksTransitLookup(stop,next,mode)) { stop.manualRoute = true; stop.googleRouteRequested = false; save(); return; }
+  if(!gmap||!state.settings.key){stop.manualRoute=true;if(mode===previousMode)stop.minutes=previousMinutes;save();openSegmentMenu(d,index,'지도 연결 후 소요 시간을 조회할 수 있어요.');return;}
   await resolveSegmentLocations(d, index);
   if (currentTripId !== tripId || state.days[d]?.[index] !== stop || stop.mode !== mode) return;
   if (!gmap || !state.settings.key) { if(mode===previousMode){stop.manualRoute=previousManual;save();}openSegmentMenu(d, index, "지도 연결 후 Google 소요 시간을 조회할 수 있어요. 직접 입력도 가능해요."); return; }
