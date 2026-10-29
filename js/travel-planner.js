@@ -1745,6 +1745,17 @@ function rateDialog() {
 }
 
 let mapFocusRequest = 0;
+function centerMapOnVisiblePoint(point) {
+  if(!gmap)return;
+  const rect=gmap.getDiv().getBoundingClientRect(),projection=gmap.getProjection?.();
+  const top=Math.max(0,rect.top)+90,bottom=Math.min(innerHeight,rect.bottom)-28;
+  if(!projection||bottom<=top){gmap.panTo(point);return;}
+  const targetY=(top+bottom)/2,centerY=rect.top+rect.height/2;
+  const world=projection.fromLatLngToPoint(new google.maps.LatLng(point.lat,point.lng));
+  const scale=2**(gmap.getZoom()||15);
+  const center=projection.fromPointToLatLng(new google.maps.Point(world.x,world.y+(centerY-targetY)/scale));
+  gmap.panTo(center);
+}
 async function focusCard(i) {
   let s = state.days[day][i];
   if (!s) return;
@@ -1753,6 +1764,7 @@ async function focusCard(i) {
     return;
   }
   const request = ++mapFocusRequest, tripId = currentTripId, targetDay = day;
+  window.dispatchEvent(new CustomEvent('sappun-explicit-map-focus',{detail:{stopId:s.id}}));
   selected = i;
   activeScheduleCard = {tripId: currentTripId, day, stopId: s.id};
   mapDisplay().selectedDay = day;
@@ -2948,7 +2960,7 @@ async function drawGoogle() {
   updateMapPinSelection();
   if (focus && focus.tripId === currentTripId) {
     const s = state.days.flat().find((s) => s.id === focus.stopId), p = s && savedPoint(s);
-    if (p) { gmap.panTo({ lat: p.lat, lng: p.lng }); gmap.setZoom(Math.max(18,gmap.getZoom?.()||0)); }
+    if (p) { gmap.setZoom(Math.max(18,gmap.getZoom?.()||0));centerMapOnVisiblePoint({lat:p.lat,lng:p.lng}); }
     else toast("저장된 위치가 없어요. 해당 날짜의 위치 조회 버튼을 이용해 주세요.", "warning");
     requestedMapFocus = null;
   } else if (count && mapViewportSelection !== viewportSelection) {

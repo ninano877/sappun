@@ -66,10 +66,10 @@ function mobileScheduleCandidate(cards, focusY, viewportBottom) {
         await drawGoogle();
         if (!valid()) return;
       }
-      gmap.panTo({lat:point.lat, lng:point.lng});
       highlightMapStop(stop.id);
       const zoom = gmap.getZoom?.() || 15;
       if (zoom < 14 || zoom > 17) gmap.setZoom(15);
+      centerMapOnVisiblePoint({lat:point.lat,lng:point.lng});
     } catch {
       // Keep the current map if a place has no usable location; scrolling stays uninterrupted.
       if (token === request) lastKey = '';
@@ -94,6 +94,10 @@ function mobileScheduleCandidate(cards, focusY, viewportBottom) {
   };
   window.addEventListener('scroll', scheduleFollow, {passive:true,capture:true});
   window.addEventListener('resize', refreshChrome, {passive:true});
+  window.addEventListener('sappun-explicit-map-focus',event=>{
+    pauseUntil=Date.now()+1600;request++;
+    lastKey=currentTripId+':'+event.detail.stopId;
+  });
   media.addEventListener('change', refreshChrome);
   document.addEventListener('pointerdown', event => {
     if (enabled() && event.target.closest('.mapstage')) {
