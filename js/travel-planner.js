@@ -414,6 +414,11 @@ let shownRouteLines = [],
 function stayMinutes(s) {
   return Number.isFinite(s.stay) ? s.stay : 60;
 }
+function formatTravelDuration(value) {
+  if(value===null||value===undefined||!Number.isFinite(Number(value)))return '시간 미확인';
+  const minutes=Math.max(0,Math.round(Number(value))),hours=Math.floor(minutes/60),rest=minutes%60;
+  return hours?hours+'시간'+(rest?' '+rest+'분':''):minutes+'분';
+}
 function clockAdd(time, minutes) {
   let [h, m] = String(time).split(":").map(Number),
     v = h * 60 + m + minutes;
@@ -724,7 +729,7 @@ function showRoute(i) {
   modal(
     /* HTML */ `<h2>${esc(a.name)} → ${esc(b.name)}</h2>
       <p class="route-note">
-        ${esc(a.mode)} · ${l.minutes === null ? "시간 미확인" : l.minutes + "분"} ·
+        ${esc(a.mode)} · ${l.minutes === null ? "시간 미확인" : formatTravelDuration(l.minutes)} ·
         ${l.fare === null
           ? "요금 확인 필요"
           : (l.currency === "JPY" ? yen(l.fare) : money(l.fare)) + " / 인"}
@@ -751,7 +756,7 @@ function showRoute(i) {
                     )}
                   </div>
                   <small
-                    >${s.minutes ? s.minutes + "분 · " : ""}${s.distance
+                    >${s.minutes ? formatTravelDuration(s.minutes) + " · " : ""}${s.distance
                       ? Math.round(s.distance) + "m"
                       : ""}</small
                   >
@@ -2402,7 +2407,7 @@ function segmentBlock(d, i) {
   const meters=route?.status==='ok'?route.distance:savedRouteDistance(s,next);
   const distance = entered && meters > 0
     ? (meters < 1000 ? Math.round(meters) + "m" : (meters / 1000).toLocaleString("ko-KR", {maximumFractionDigits: 1}) + "km") : "";
-  const summary = entered ? [s.mode, minutes !== null ? minutes + "분" : "", distance].filter(Boolean).join(" · ") : "이동 추가";
+  const summary = entered ? [s.mode, minutes !== null ? formatTravelDuration(minutes) : "", distance].filter(Boolean).join(" · ") : "이동 추가";
   if (sharedViewMode) {
     if (!entered) return "";
     return '<div class="itinerary-connection"><span class="shared-segment-summary">'+(transportIcon[s.mode]||"↳")+' '+esc(summary)+'</span>'+(s.actualFare !== null && s.actualFare !== undefined ? '<span class="segment-fare">'+money(won(s.actualFare,s.actualFareCurrency||s.fareCurrency||travelCurrency()))+'</span>' : '')+'</div>';
@@ -2834,7 +2839,7 @@ async function drawMapRoutes(version) {
       label.className = "map-travel-label";
       label.style.borderColor = dayColor(d);
       const minutes = stop.minutes ?? result?.minutes;
-      label.textContent = (transportIcon[stop.mode] || "🚐") + " " + stop.mode + (minutes != null ? " · " + minutes + "분" : "");
+      label.textContent = (transportIcon[stop.mode] || "🚐") + " " + stop.mode + (minutes != null ? " · " + formatTravelDuration(minutes) : "");
       label.title = stop.name + " → " + stops[i + 1].name + (!actual&&entered?' · 시간 직접 입력 · 장소 간 연결선':'');
       label.onclick = () => { day = d; leg(i); };
       if (prefs.showPins) travelLabelMarkers.push(new google.maps.marker.AdvancedMarkerElement({ map: gmap,
@@ -3054,10 +3059,10 @@ function leg(i) {
       if (!active() || version !== requestVersion || val("mode") !== mode) return;
       const showResult=result=>{
         draftRoute={mode,result};const alternatives=result.alternatives||[result];
-        const lines=(result.steps||[]).filter(step=>step.line||step.text).map(step=>step.line?[step.line,step.from&&step.to?step.from+' → '+step.to:'',step.headsign?step.headsign+' 방면':'',step.stopCount!==null&&step.stopCount!==undefined?step.stopCount+'개 정류장':'',step.departureText||''].filter(Boolean).join(' · '):(step.mode==='WALKING'?'도보 '+step.minutes+'분 · ':'')+step.text);
-        resultBox.innerHTML='<div class="segment-route-estimate"><div><small>'+esc(mode)+' · Google 예상</small><strong>'+result.minutes+'분</strong><span>'+((result.distance||0)/1000).toLocaleString('ko-KR',{maximumFractionDigits:1})+' km</span></div><button id="segment-route-apply" type="button">이 경로·시간 적용</button></div>'+
+        const lines=(result.steps||[]).filter(step=>step.line||step.text).map(step=>step.line?[step.line,step.from&&step.to?step.from+' → '+step.to:'',step.headsign?step.headsign+' 방면':'',step.stopCount!==null&&step.stopCount!==undefined?step.stopCount+'개 정류장':'',step.departureText||''].filter(Boolean).join(' · '):(step.mode==='WALKING'?'도보 '+formatTravelDuration(step.minutes)+' · ':'')+step.text);
+        resultBox.innerHTML='<div class="segment-route-estimate"><div><small>'+esc(mode)+' · Google 예상</small><strong>'+formatTravelDuration(result.minutes)+'</strong><span>'+((result.distance||0)/1000).toLocaleString('ko-KR',{maximumFractionDigits:1})+' km</span></div><button id="segment-route-apply" type="button">이 경로·시간 적용</button></div>'+
           (result.departureLabel?'<p class="route-query-context">'+esc(result.departureLabel)+' 출발 · '+(result.departureBasis==='now'?'현재 시각 기준':'일정 시각 기준')+'<br>'+esc(result.originName||s.name)+' → '+esc(result.destinationName||next.name)+'</p>':'')+
-          (alternatives.length>1?'<div class="route-alternatives">'+alternatives.map((option,index)=>'<button type="button" data-route-choice="'+index+'" aria-pressed="'+(option.minutes===result.minutes&&option.summary===result.summary)+'">'+option.minutes+'분 · '+esc(option.summary||'경로 '+(index+1))+'</button>').join('')+'</div>':'')+
+          (alternatives.length>1?'<div class="route-alternatives">'+alternatives.map((option,index)=>'<button type="button" data-route-choice="'+index+'" aria-pressed="'+(option.minutes===result.minutes&&option.summary===result.summary)+'">'+formatTravelDuration(option.minutes)+' · '+esc(option.summary||'경로 '+(index+1))+'</button>').join('')+'</div>':'')+
           (lines.length?'<ol class="segment-route-steps">'+lines.map(line=>'<li>'+esc(line)+'</li>').join('')+'</ol>':'<p class="note">이 경로는 상세 노선 정보가 제공되지 않았어요.</p>');
         resultBox.hidden=false;
         $('#segment-route-apply').onclick=()=>{if(!draftRoute||draftRoute.mode!==val('mode'))return;$('#f-minutes').value=draftRoute.result.minutes;appliedRoute=draftRoute;status.textContent='경로와 시간을 적용했어요. 저장하면 일정과 지도에 반영돼요.';};
@@ -3900,7 +3905,7 @@ function renderLeg(d, i) {
   return /* HTML */ `<div class="leg-time-line">
       <span><small>출발</small> ${esc(times.departure)}</span
       ><span class="leg-travel-duration"
-        >${times.minutes === null ? "소요 시간 미입력" : times.minutes + "분"}</span
+        >${times.minutes === null ? "소요 시간 미입력" : formatTravelDuration(times.minutes)}</span
       ><span><small>도착</small> ${esc(times.arrival)}</span>
     </div>
     <div class="transport-options">
