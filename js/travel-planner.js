@@ -603,20 +603,15 @@ function extractRoute(r, mode) {
     fare:mode==='도보'?{value:0,currency:'JPY'}:routeMoney(r.travelAdvisory?.transitFare),
     summary:r.description||steps.filter(s=>s.line).map(s=>s.line).join(' → '),steps,path:r.path||[],warnings:r.warnings||[],fetched:Date.now()};
 }
-function estimatedTransitMinutes(distance) {
-  const km=Math.max(0,distance)/1000;
-  // Rough distance bands; these are not measured train/bus speeds or timetable data.
-  const [speed,overhead]=km<=5?[25,6]:km<=15?[30,10]:[50,10];
-  return Math.max(1,Math.ceil(km/speed*60+overhead));
-}
 function estimateSegmentRoute(origin,destination,mode) {
+  if(mode==='대중교통')throw Error('대중교통 경로를 받지 못했어요. 기존 시간은 유지하며, 시간이 없으면 직접 입력해 주세요.');
   if(![origin?.lat,origin?.lng,destination?.lat,destination?.lng].every(Number.isFinite))throw Error('시간 추정에 필요한 위치가 없어요.');
   const rad=value=>value*Math.PI/180,lat=rad(destination.lat-origin.lat),lng=rad(destination.lng-origin.lng);
   const h=Math.sin(lat/2)**2+Math.cos(rad(origin.lat))*Math.cos(rad(destination.lat))*Math.sin(lng/2)**2;
   const distance=Math.round(6371000*2*Math.atan2(Math.sqrt(h),Math.sqrt(Math.max(0,1-h))));
   // Product estimates, not real route distances, timetables, or Google results.
   const [speed,detour]=mode==='도보'?[4,1.3]:[25,1.3];
-  const minutes=mode==='대중교통'?estimatedTransitMinutes(distance):Math.max(1,Math.ceil(distance*detour/1000/speed*60));
+  const minutes=Math.max(1,Math.ceil(distance*detour/1000/speed*60));
   return {status:'ok',estimated:true,minutes,distance,path:[],steps:[],fare:null,summary:'좌표 기준 추정',fetched:Date.now()};
 }
 async function lookupSegmentRoute(d, a, b, mode = a.mode, options = {}) {
