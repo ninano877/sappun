@@ -317,7 +317,8 @@ async function route(request, env, now) {
 export default {
   async fetch(request, env, context) {
     const origin = request.headers.get('Origin');
-    const headers = {'Content-Type':'application/json; charset=utf-8', 'Cache-Control':'no-store', 'Vary':'Origin', 'X-Content-Type-Options':'nosniff'};
+    const headers = {'Content-Type':'application/json; charset=utf-8', 'Cache-Control':'no-store', 'Vary':'Origin', 'X-Content-Type-Options':'nosniff', 'X-Robots-Tag':'noindex, nofollow, noarchive, nosnippet, noimageindex', 'Referrer-Policy':'no-referrer'};
+    if(new URL(request.url).pathname==='/robots.txt')return new Response('User-agent: *\nDisallow: /\n',{headers:{...headers,'Content-Type':'text/plain; charset=utf-8'}});
     const localMapLink = new URL(request.url).pathname === '/api/maps/resolve' && (origin === 'null' || /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(origin || ''));
     const allowedOrigin = origin === env.APP_ORIGIN || localMapLink;
     if (allowedOrigin) Object.assign(headers, {'Access-Control-Allow-Origin':origin, 'Access-Control-Allow-Methods':localMapLink?'POST,OPTIONS':'GET,POST,PUT,PATCH,DELETE,OPTIONS', 'Access-Control-Allow-Headers':'Content-Type,Authorization', 'Access-Control-Max-Age':'600'});
