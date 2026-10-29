@@ -2418,7 +2418,7 @@ function segmentBlock(d, i) {
       <summary aria-label="${esc(s.name)}에서 ${esc(next.name)}까지 이동 설정">${entered ? transportIcon[s.mode] || "↳" : "＋"} <span>${esc(summary)}</span><span class="segment-chevron" aria-hidden="true">⌄</span></summary>
       <div class="segment-menu" role="group" aria-label="이동 수단과 경로 설정">
         <p class="segment-menu-heading">이동 수단</p>
-        ${(blocksTransitLookup(s,next,"대중교통")?["도보","택시"]:["도보","대중교통","택시"]).map(mode => `<button type="button" data-segment-mode="${mode}" aria-pressed="${entered && s.mode === mode}">${transportIcon[mode]} ${mode}${entered && s.mode === mode ? '<span class="segment-check">✓</span>' : ""}</button>`).join("")}
+        ${["도보","대중교통","택시"].map(mode => `<button type="button" data-segment-mode="${mode}" aria-pressed="${entered && s.mode === mode}">${transportIcon[mode]} ${mode}${entered && s.mode === mode ? '<span class="segment-check">✓</span>' : ""}</button>`).join("")}
         ${!blocksTransitLookup(s,next)?'<button type="button" data-segment-lookup>⌕ Google 소요 시간 조회</button>':''}
         <a class="segment-external-directions" href="https://www.google.com/maps/dir/?api=1&amp;origin=${encodeURIComponent(s.query||s.name)}&amp;destination=${encodeURIComponent(next.query||next.name)}&amp;travelmode=${s.mode==='도보'?'walking':s.mode==='택시'?'driving':'transit'}" target="_blank" rel="noopener">↗ Google 지도에서 길찾기</a>
         <div class="segment-menu-divider"></div>
@@ -2999,7 +2999,7 @@ function leg(i) {
   modal(
     `<h2>이동 구간 설정</h2>
     <p class="note">${esc(s.name)} → ${esc(next.name)}</p>
-    ${TravelComponents.choices("이동 수단", "mode", [...modes.filter(mode=>mode!=="대중교통"||!blocksTransitLookup(s,next,"대중교통")), "없음"], s.noTravel ? "없음" : s.mode).replace(">없음</button>", ">구간 없음</button>")}
+    ${TravelComponents.choices("이동 수단", "mode", [...modes, "없음"], s.noTravel ? "없음" : s.mode).replace(">없음</button>", ">구간 없음</button>")}
     <details class="segment-route-search" aria-label="Google 경로 조회"><summary>Google 경로 조회 · 선택</summary>
       <div class="segment-route-search-heading"><b>Google 길찾기</b><button type="button" id="segment-route-search" class="primary">경로·소요 시간 조회</button></div>
       <p id="segment-route-status" class="note" role="status" aria-live="polite">이동 수단을 선택하고 예상 시간과 경로를 확인해 보세요.</p>
