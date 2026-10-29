@@ -12,6 +12,15 @@ function mobileScheduleCandidate(cards, focusY, viewportBottom) {
   return best;
 }
 
+function desktopScheduleCandidate(cards,viewportTop,viewportBottom) {
+  return cards.find(card=>{
+    const rect=card.getBoundingClientRect();
+    if(rect.height<=0||rect.bottom<=viewportTop||rect.top>=viewportBottom)return false;
+    const title=(card.querySelector('.stop-card-heading h3')||card).getBoundingClientRect();
+    return title.height>0&&title.top>=viewportTop-2&&title.bottom<=viewportBottom;
+  })||null;
+}
+
 (function installMobileItinerary() {
   const media = window.matchMedia('(max-width: 760px)');
   let timer = null, request = 0, lastKey = '', pauseUntil = 0;
@@ -40,7 +49,7 @@ function mobileScheduleCandidate(cards, focusY, viewportBottom) {
     if(visibleBottom<=visibleTop)return;
     const focusY=media.matches?mapRect.bottom+12:visibleTop;
     const cards=[...document.querySelectorAll('#stops .map-stop-card')];
-    const card = media.matches?mobileScheduleCandidate(cards,focusY,visibleBottom):cards.find(node=>{const r=node.getBoundingClientRect();return r.height>0&&r.bottom>visibleTop+Math.min(36,r.height/2)&&r.top<visibleBottom;});
+    const card = media.matches?mobileScheduleCandidate(cards,focusY,visibleBottom):desktopScheduleCandidate(cards,visibleTop,visibleBottom);
     if (!card) return;
     const d = Number(card.closest('[data-group-day]').dataset.groupDay);
     const index = Number(card.dataset.cardIndex), stop = state.days[d]?.[index];
