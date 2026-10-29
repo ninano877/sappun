@@ -15,18 +15,20 @@ function mobileScheduleCandidate(cards, focusY, viewportBottom) {
 (function installMobileItinerary() {
   const media = window.matchMedia('(max-width: 760px)');
   let timer = null, request = 0, lastKey = '', pauseUntil = 0;
+  let desktopHasScrolled=false,followTrip=null;
   const enabled = () => !homeOpen &&
     (trip().workspaceView || 'itinerary') === 'itinerary' && trip().viewMode !== 'list';
 
   function refreshChrome() {
     const active = enabled();
+    if(followTrip!==currentTripId){followTrip=currentTripId;desktopHasScrolled=false;lastKey='';}
     document.body.classList.toggle('mobile-itinerary', active && media.matches);
-    if (!active) { clearTimeout(timer); timer = null; request++; lastKey = ''; return; }
+    if (!active) { clearTimeout(timer); timer = null; request++; lastKey = '';desktopHasScrolled=false; return; }
     scheduleFollow();
   }
 
   async function followVisiblePlace() {
-    if (!enabled() || Date.now() < pauseUntil || document.body.matches('.detail-open, .resource-open') || document.querySelector('dialog[open]')) return;
+    if (!enabled() || (!media.matches&&!desktopHasScrolled) || Date.now() < pauseUntil || document.body.matches('.detail-open, .resource-open') || document.querySelector('dialog[open]')) return;
     const map = document.querySelector('.layout .mapcolumn');
     if(!map || !map.getClientRects().length)return;
     const mapRect = map.getBoundingClientRect();
@@ -36,28 +38,29 @@ function mobileScheduleCandidate(cards, focusY, viewportBottom) {
     const headerBottom=header?Math.max(0,Math.min(header.getBoundingClientRect().bottom,100)):0;
     const visibleTop=Math.max(headerBottom+24,listRect.top,0),visibleBottom=Math.min(window.innerHeight,listRect.bottom);
     if(visibleBottom<=visibleTop)return;
-    const focusY=media.matches?mapRect.bottom+12:(visibleTop+visibleBottom)/2;
+    const focusY=media.matches?mapRect.bottom+12:visibleTop;
     const cards=[...document.querySelectorAll('#stops .map-stop-card')];
-    const card = media.matches?mobileScheduleCandidate(cards,focusY,visibleBottom):cards.filter(node=>{const r=node.getBoundingClientRect();return r.bottom>visibleTop&&r.top<visibleBottom;}).sort((a,b)=>{
-      const distance=node=>{const r=node.getBoundingClientRect();return focusY<r.top?r.top-focusY:focusY>r.bottom?focusY-r.bottom:0;};return distance(a)-distance(b);
-    })[0];
+    const card = media.matches?mobileScheduleCandidate(cards,focusY,visibleBottom):cards.find(node=>{const r=node.getBoundingClientRect();return r.height>0&&r.bottom>visibleTop+Math.min(36,r.height/2)&&r.top<visibleBottom;});
     if (!card) return;
     const d = Number(card.closest('[data-group-day]').dataset.groupDay);
     const index = Number(card.dataset.cardIndex), stop = state.days[d]?.[index];
     if (!stop) return;
     const key = currentTripId + ':' + stop.id;
-    if (key === lastKey) return;
+    if (key === lastKey) {
+      const point=savedPoint(stop);if(!media.matches&&gmap&&point)centerMapOnVisiblePoint({lat:point.lat,lng:point.lng});
+      return;
+    }
     lastKey = key;
     const token = ++request, tripId = currentTripId;
-    document.querySelectorAll('.is-map-following').forEach(item => item.classList.remove('is-map-following'));
-    card.classList.add('is-map-following');
-    highlightMapStop(stop.id);
     const valid = () => enabled() && token === request && currentTripId === tripId &&
       state.days[d]?.includes(stop) && Date.now() >= pauseUntil && !document.body.matches('.detail-open, .resource-open');
     if (!gmap) return;
     try {
       const point = savedPoint(stop);
-      if (!point || !valid()) return;
+      if (!point || !valid()) {if(token===request)lastKey='';return;}
+      document.querySelectorAll('.is-map-following').forEach(item => item.classList.remove('is-map-following'));
+      card.classList.add('is-map-following');
+      highlightMapStop(stop.id);
       const prefs = mapDisplay();
       if (prefs.selectedDay !== null && prefs.selectedDay !== d) {
         prefs.selectedDay = d;
@@ -77,7 +80,7 @@ function mobileScheduleCandidate(cards, focusY, viewportBottom) {
   }
 
   function scheduleFollow() {
-    if (!enabled() || timer !== null) return;
+    if (!enabled() || (!media.matches&&!desktopHasScrolled) || timer !== null) return;
     timer = setTimeout(() => { timer = null; followVisiblePlace(); }, 80);
   }
   const previousRender = render;
@@ -92,7 +95,11 @@ function mobileScheduleCandidate(cards, focusY, viewportBottom) {
     refreshChrome();
     return result;
   };
-  window.addEventListener('scroll', scheduleFollow, {passive:true,capture:true});
+  window.addEventListener('scroll', event=>{
+    if(event.target?.closest?.('.mapstage,.mobile-trip-menu,.cloud-dialog'))return;
+    if(!media.matches)desktopHasScrolled=true;
+    scheduleFollow();
+  }, {passive:true,capture:true});
   window.addEventListener('resize', refreshChrome, {passive:true});
   window.addEventListener('sappun-explicit-map-focus',event=>{
     pauseUntil=Date.now()+1600;request++;
