@@ -606,8 +606,8 @@ function extractRoute(r, mode) {
 function estimatedTransitMinutes(distance) {
   const km=Math.max(0,distance)/1000;
   // Rough distance bands; these are not measured train/bus speeds or timetable data.
-  const [speed,overhead]=km<=5?[25,6]:km<=15?[30,10]:[50,10];
-  return Math.max(1,Math.ceil(km/speed*60+overhead));
+  const speed=km<=5?25:km<=15?30:50;
+  return Math.max(1,Math.ceil(km/speed*60));
 }
 function estimateSegmentRoute(origin,destination,mode) {
   if(![origin?.lat,origin?.lng,destination?.lat,destination?.lng].every(Number.isFinite))throw Error('시간 추정에 필요한 위치가 없어요.');
