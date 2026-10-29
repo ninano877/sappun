@@ -33,9 +33,15 @@
     }
     menu.hidden = false;
     menu.querySelector('.mobile-current-tab').textContent = sharedViewMode ? '여행 메뉴' : media.matches ? nav.querySelector('[aria-pressed="true"]')?.textContent.trim() || '여행 메뉴' : '여행 관리';
-    if (media.matches) menu.querySelector('.mobile-menu-nav').append(nav);
-    else navHome.after(nav);
-    menu.querySelector('.mobile-menu-tools').append(tools);
+    const navHost=menu.querySelector('.mobile-menu-nav');
+    if (media.matches) {if(nav.parentElement!==navHost)navHost.append(nav);}
+    else if(navHome.nextSibling!==nav)navHome.after(nav);
+    nav.querySelectorAll('[data-workspace-view]').forEach(button=>{
+      button.draggable=!media.matches&&!sharedViewMode;
+      if(media.matches)button.removeAttribute('title');
+    });
+    const toolsHost=menu.querySelector('.mobile-menu-tools');
+    if(tools.parentElement!==toolsHost)toolsHost.append(tools);
 
     if (lastTrip !== currentTripId) { menu.open = false; lastTrip = currentTripId; }
   }
@@ -48,7 +54,7 @@
   document.addEventListener('click',event => {
     if (!menu?.open) return;
     if (!menu.contains(event.target) || event.target.closest('.mobile-trip-menu-panel button')) menu.open = false;
-  },true);
+  });
   document.addEventListener('keydown',event => { if (event.key === 'Escape' && menu) menu.open = false; });
   sync();
 })();
