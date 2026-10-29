@@ -3043,12 +3043,15 @@ function leg(i) {
     status.classList.toggle("warning", !supported);
   };
   const onModeChange = event => {
+    if(!body.contains(event.target))return;
     if (!event.target.closest('[data-value-target="f-mode"], [data-value-target="f-routebasis"]')) return;
-    queueMicrotask(() => { if (active()) updateMode(); });
+    if (active()) updateMode();
   };
   const body = panel.parentElement;
-  body.addEventListener("click", onModeChange);
-  $("#modal").addEventListener("close", () => body.removeEventListener("click", onModeChange), { once: true });
+  // Read the value after the document's choice handler updates the hidden input.
+  document.addEventListener("click", onModeChange);
+  $("#modal").addEventListener("close", () => document.removeEventListener("click", onModeChange), { once: true });
+  external.addEventListener('click',()=>{external.href=route({...s,mode:val('mode')},next);});
   search.onclick = async () => {
     const mode = val("mode"), version = ++requestVersion;
     search.disabled = true; search.textContent = "조회 중…";
