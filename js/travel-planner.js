@@ -3050,6 +3050,8 @@ function leg(i) {
     requestVersion++; draftRoute = null; appliedRoute = null;
     resultBox.hidden = true; resultBox.innerHTML = "";
     const mode = val("mode"), supported = ["대중교통", "도보", "택시"].includes(mode);
+    panel.hidden=!supported;
+    if(!supported)panel.open=false;
     $('#segment-expense-fields').hidden=mode==='도보'||mode==='없음';
     search.hidden=!supported;
     search.disabled = !supported||search.hidden; search.textContent = "경로·소요 시간 조회";
@@ -4185,6 +4187,8 @@ function positionSegmentMenu(details) {
   const height = menu.getBoundingClientRect().height;
   menu.style.top = Math.max(12, Math.min(rect.bottom + 5, window.innerHeight - height - 12)) + "px";
 }
+const segmentSelectionRequests=new WeakMap();
+let segmentSelectionVersion=0;
 function openSegmentMenu(d, index, message = "") {
   const menu = [...$("#stops").querySelectorAll(".segment-popover")].find(menu => Number(menu.dataset.segmentDay) === d && Number(menu.dataset.segmentIndex) === index);
   if (!menu) return;
@@ -4222,21 +4226,28 @@ document.addEventListener("click", async event => {
   event.preventDefault(); event.stopImmediatePropagation();
   const menu = button.closest(".segment-popover"), d = Number(menu.dataset.segmentDay), index = Number(menu.dataset.segmentIndex), stop = state.days[d][index], next = state.days[d][index + 1];
   if (!stop || !next) return;
+  const selectionVersion=++segmentSelectionVersion;segmentSelectionRequests.set(stop,selectionVersion);
   day = d;
   if (button.hasAttribute("data-segment-settings")) { menu.open = false; leg(index); return; }
   if (button.hasAttribute("data-segment-hide")) { stop.noTravel = true; stop.segmentEnabled = false; allMapSignature = ""; save(); render(); return; }
   const mode = button.dataset.segmentMode || stop.mode || "도보", tripId = currentTripId;
   const previousMode=stop.mode,previousMinutes=stop.minutes,previousManual=stop.manualRoute;
   stop.mode = mode; stop.noTravel = false; stop.segmentEnabled = true; stop.manualRoute = false; stop.minutes = mode===previousMode?previousMinutes:null;
-  routeResults.delete(routeSignature(d, index)); allMapSignature = ""; save(); render();
-  if (button.dataset.segmentMode&&!['도보','대중교통'].includes(mode)) { stop.manualRoute = true; stop.googleRouteRequested = false; save(); return; }
+  routeResults.delete(routeSignature(d, index)); allMapSignature = ""; save();
+  const summary=menu.querySelector('summary');
+  summary.innerHTML=(transportIcon[mode]||'↳')+' <span>'+esc(mode)+'</span><span class="segment-chevron" aria-hidden="true">⌄</span>';
+  menu.querySelectorAll('[data-segment-mode]').forEach(item=>item.setAttribute('aria-pressed',String(item.dataset.segmentMode===mode)));
+  const directions=menu.querySelector('.segment-external-directions');if(directions)directions.href=route(stop,next);
+  if (button.dataset.segmentMode&&!['도보','대중교통'].includes(mode)) { stop.manualRoute = true; stop.googleRouteRequested = false; save();render(); return; }
+  await new Promise(resolve=>setTimeout(resolve,220));
+  if(segmentSelectionRequests.get(stop)!==selectionVersion||currentTripId!==tripId||state.days[d]?.[index]!==stop)return;
   if(!gmap||!state.settings.key){stop.manualRoute=true;if(mode===previousMode)stop.minutes=previousMinutes;save();openSegmentMenu(d,index,'지도 연결 후 소요 시간을 조회할 수 있어요.');return;}
   await resolveSegmentLocations(d, index);
-  if (currentTripId !== tripId || state.days[d]?.[index] !== stop || stop.mode !== mode) return;
+  if (segmentSelectionRequests.get(stop)!==selectionVersion||currentTripId !== tripId || state.days[d]?.[index] !== stop || stop.mode !== mode) return;
   if (!gmap || !state.settings.key) { if(mode===previousMode){stop.manualRoute=previousManual;save();}openSegmentMenu(d, index, "지도 연결 후 Google 소요 시간을 조회할 수 있어요. 직접 입력도 가능해요."); return; }
   openSegmentMenu(d, index, "Google 소요 시간을 조회하고 있어요…");
   await getLeg(d, index, true, true);
-  if (homeOpen || currentTripId !== tripId || state.days[d]?.[index] !== stop || state.days[d]?.[index + 1] !== next || stop.mode !== mode) return;
+  if (segmentSelectionRequests.get(stop)!==selectionVersion||homeOpen || currentTripId !== tripId || state.days[d]?.[index] !== stop || state.days[d]?.[index + 1] !== next || stop.mode !== mode) return;
   const result = currentRoute(d, index);
   if (result?.status === "ok") { stop.googleRouteRequested=true;stop.googleRouteDepartureBasis="schedule";stop.minutes = result.minutes; syncFollowingSchedule(d, index, result.minutes); }
   else if(mode===previousMode){stop.minutes=previousMinutes;stop.manualRoute=previousManual;}
