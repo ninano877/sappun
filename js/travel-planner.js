@@ -603,15 +603,20 @@ function extractRoute(r, mode) {
     fare:mode==='도보'?{value:0,currency:'JPY'}:routeMoney(r.travelAdvisory?.transitFare),
     summary:r.description||steps.filter(s=>s.line).map(s=>s.line).join(' → '),steps,path:r.path||[],warnings:r.warnings||[],fetched:Date.now()};
 }
-function estimateSegmentRoute(origin,destination,mode,stop) {
-  if(mode==='대중교통'&&stop?.mode===mode&&stop.minutes!==null&&stop.minutes!==undefined&&Number.isFinite(Number(stop.minutes)))throw Error('대중교통 경로 응답이 없어 기존에 저장된 시간을 유지했어요.');
+function estimatedTransitMinutes(distance) {
+  const km=Math.max(0,distance)/1000;
+  // Rough distance bands; these are not measured train/bus speeds or timetable data.
+  const [speed,overhead]=km<=5?[25,6]:km<=15?[30,10]:[50,10];
+  return Math.max(1,Math.ceil(km/speed*60+overhead));
+}
+function estimateSegmentRoute(origin,destination,mode) {
   if(![origin?.lat,origin?.lng,destination?.lat,destination?.lng].every(Number.isFinite))throw Error('시간 추정에 필요한 위치가 없어요.');
   const rad=value=>value*Math.PI/180,lat=rad(destination.lat-origin.lat),lng=rad(destination.lng-origin.lng);
   const h=Math.sin(lat/2)**2+Math.cos(rad(origin.lat))*Math.cos(rad(destination.lat))*Math.sin(lng/2)**2;
   const distance=Math.round(6371000*2*Math.atan2(Math.sqrt(h),Math.sqrt(Math.max(0,1-h))));
   // Product estimates, not real route distances, timetables, or Google results.
   const [speed,detour]=mode==='도보'?[4,1.3]:[25,1.3];
-  const minutes=mode==='대중교통'?Math.max(1,Math.ceil(distance/1000/(distance>15000?50:30)*60+8)):Math.max(1,Math.ceil(distance*detour/1000/speed*60));
+  const minutes=mode==='대중교통'?estimatedTransitMinutes(distance):Math.max(1,Math.ceil(distance*detour/1000/speed*60));
   return {status:'ok',estimated:true,minutes,distance,path:[],steps:[],fare:null,summary:'좌표 기준 추정',fetched:Date.now()};
 }
 async function lookupSegmentRoute(d, a, b, mode = a.mode, options = {}) {
@@ -637,13 +642,13 @@ async function lookupSegmentRoute(d, a, b, mode = a.mode, options = {}) {
   let timeout;
   const response = await Promise.race([Route.computeRoutes(request),new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('경로 응답 시간 초과')),12000);})]).finally(()=>clearTimeout(timeout));
   const result = response.routes?.[0];
-  if (!result) return estimateSegmentRoute(origin,destination,mode,a);
+  if (!result) return estimateSegmentRoute(origin,destination,mode);
   const departureLabel=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Seoul',dateStyle:'short',timeStyle:'short'}).format(departureTime);
   const alternatives=response.routes.map(route=>({...extractRoute(route,mode),departureLabel,departureBasis:options.departureBasis||'schedule',originName:origin.name||a.query||a.name||'',destinationName:destination.name||b.query||b.name||''}));
   return {...alternatives[0],alternatives};
   } catch(error) {
     if(/denied|permission|billing|api.?key|unauth|quota|resource.exhausted|invalid.argument/i.test(String(error.code||'')+' '+String(error.message||'')))throw error;
-    return estimateSegmentRoute(origin,destination,mode,a);
+    return estimateSegmentRoute(origin,destination,mode);
   }
 }
 
