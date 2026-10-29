@@ -257,9 +257,16 @@ async function route(request, env, now) {
     if (!Number.isInteger(input.revision) || input.revision < 0) fail(400, '저장 버전을 확인해 주세요.');
     book._serverSavedAt=Date.now();
     // Atomic compare-and-swap prevents two tabs or devices silently overwriting a newer book.
-    const result = input.revision === 0
-      ? await env.DB.prepare('INSERT OR IGNORE INTO books(id,payload,revision) VALUES (1,?,1)').bind(JSON.stringify(book)).run()
-      : await env.DB.prepare('UPDATE books SET payload=?,revision=revision+1 WHERE id=1 AND revision=?').bind(JSON.stringify(book), input.revision).run();
+    const write = input.revision === 0
+      ? env.DB.prepare('INSERT OR IGNORE INTO books(id,payload,revision) VALUES (1,?,1)').bind(JSON.stringify(book))
+      : env.DB.prepare('UPDATE books SET payload=?,revision=revision+1 WHERE id=1 AND revision=?').bind(JSON.stringify(book), input.revision);
+    // Use the committed book, never the rejected incoming version, to remove orphan shares.
+    const orphanShareIds = `SELECT shares.id FROM shares WHERE json_extract(shares.payload,'$.planner.id') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM books,json_each(books.payload,'$.trips') AS trip WHERE books.id=1 AND json_extract(trip.value,'$.id')=json_extract(shares.payload,'$.planner.id'))`;
+    const [result] = await env.DB.batch([
+      write,
+      env.DB.prepare('DELETE FROM share_sessions WHERE share_id IN ('+orphanShareIds+')'),
+      env.DB.prepare('DELETE FROM shares WHERE id IN ('+orphanShareIds+')')
+    ]);
     if (result.meta.changes !== 1) fail(409, '다른 화면에서 수정했어요. 서버 일정을 다시 불러와 주세요.');
     return {revision:input.revision + 1,savedAt:book._serverSavedAt};
   }
